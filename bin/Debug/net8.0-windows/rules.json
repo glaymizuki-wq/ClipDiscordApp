@@ -1,0 +1,18 @@
+[
+  {
+    "Id": "7069bf1c-0e9c-4253-b65b-2f8b14cc30b9",
+    "Name": "buy",
+    "Pattern": "BUY",
+    "Type": 1,
+    "Enabled": true,
+    "Order": 0
+  },
+  {
+    "Id": "f54d3a12-c7b4-438f-9f76-efbac3a78ea1",
+    "Name": "sell",
+    "Pattern": "SELL",
+    "Type": 1,
+    "Enabled": true,
+    "Order": 1
+  }
+]

@@ -1,0 +1,49 @@
+﻿<Window x:Class="ClipDiscordApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="OCR Overlay Viewer"
+        Height="800" Width="1000"
+        WindowStartupLocation="CenterScreen"
+        Loaded="Window_Loaded">
+    <Grid>
+        <DockPanel LastChildFill="True" VerticalAlignment="Top" Height="48">
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="8,0">
+                <Button x:Name="BtnStartMonitoring"
+                        Content="Start Monitoring"
+                        Width="130" Height="30" Margin="0,0,8,0"
+                        Click="BtnStartMonitoring_Click"/>
+                <Button x:Name="BtnStopMonitoring"
+                        Content="Stop"
+                        Width="80" Height="30"
+                        Click="BtnStopMonitoring_Click"
+                        IsEnabled="False"/>
+                <Button x:Name="BtnOpenRules" Content="Rules" Width="80" Height="30" Margin="8,0,0,0" Click="BtnOpenRules_Click"/>
+                <Button x:Name="BtnTestNotification" Content="通知テスト" Width="120" Height="30" Margin="8,0,0,0" Click="BtnTestNotification_Click"/>
+                <Button x:Name="BtnSelectRegion" Content="領域選択" Click="BtnSelectRegion_Click" Margin="8,0,0,0"/>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0">
+                <TextBlock x:Name="StatusText" VerticalAlignment="Center" Margin="0,0,8,0" Text="Stopped"/>
+            </StackPanel>
+        </DockPanel>
+
+        <Grid Margin="0,48,0,0">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                <Grid>
+                    <Image x:Name="CapturedImage"
+                           Stretch="None"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Top"
+                           MouseLeftButtonDown="CapturedImage_MouseLeftButtonDown"
+                           MouseMove="CapturedImage_MouseMove"
+                           MouseLeftButtonUp="CapturedImage_MouseLeftButtonUp"/>
+                    <Canvas x:Name="OverlayCanvas" IsHitTestVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                </Grid>
+            </ScrollViewer>
+
+            <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="8" Padding="6" Background="#80000000" CornerRadius="4">
+                <TextBlock Foreground="White" FontSize="12" Text="Press Start then select region to begin monitoring."/>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
