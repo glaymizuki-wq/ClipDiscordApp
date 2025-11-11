@@ -1,16 +1,11 @@
 ﻿using ClipDiscordApp.Models;
-using System;
-using System.Collections.Generic;
+using ClipDiscordApp.Parsers;
 using System.Diagnostics;
-using System.Drawing;
 using System.IO;
-using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Forms; // Screen
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -25,7 +20,7 @@ namespace ClipDiscordApp
         private readonly TesseractEngine _tesseractEngine;
         private readonly Dictionary<string, DateTime> _lastNotified = new();
         private readonly TimeSpan _notifyCooldown = TimeSpan.FromSeconds(5);
-
+        private static readonly HttpClient _httpClient = new HttpClient();
         private CancellationTokenSource? _monitoringCts;
         private System.Drawing.Rectangle _selectedRegion = new System.Drawing.Rectangle(100, 100, 400, 100);
         private readonly string _rulesFileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "rules.json");
@@ -58,12 +53,13 @@ namespace ClipDiscordApp
             Directory.CreateDirectory(_logDir);
 
             // Initialize Tesseract engine (use "jpn" if your tessdata contains jpn.traineddata)
-            var tessDataDir = tessDir;
             try
             {
-                _tesseractEngine = new TesseractEngine(tessDataDir, "jpn", EngineMode.Default);
-                _tesseractEngine.SetVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:");
-                _tesseractEngine.DefaultPageSegMode = PageSegMode.SingleLine;
+                // 例: _tesseractEngine = new TesseractEngine(tessDataDir, "eng+jpn", EngineMode.Default)
+                var tessDataDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tessdata");
+                _tesseractEngine = new TesseractEngine(tessDataDir, "eng+jpn", EngineMode.Default);
+                _tesseractEngine.SetVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:- ");
+                _tesseractEngine.DefaultPageSegMode = PageSegMode.SingleWord;
             }
             catch (Exception ex)
             {
@@ -80,12 +76,19 @@ namespace ClipDiscordApp
 
             var prepParams = new OcrPreprocessor.Params
             {
-                Scale = 2,
-                AdaptiveBlockSize = 31,
-                AdaptiveC = 8,
+                Scale = 4,
+                AdaptiveBlockSize = 15,
+                AdaptiveC = 8.0,
                 UseClahe = true,
+                ClaheClipLimit = 3.0,
+                ClaheTileGridSize = new OpenCvSharp.Size(8, 8),
+                MorphKernel = 9,
+                UseDilate = true,
+                DilateIterations = 2,
+                Border = 8,
                 Sharpen = false,
-                MorphKernel = 2
+                SavePreprocessed = true,
+                PreprocessedFilenamePrefix = "pre_test_strong"
             };
 
             Directory.CreateDirectory(_logDir);
@@ -364,15 +367,41 @@ namespace ClipDiscordApp
             }
         }
 
-        private void BtnTestNotification_Click(object sender, RoutedEventArgs e)
+        private async void BtnTestNotification_Click(object sender, RoutedEventArgs e)
         {
-            var testMatch = new ExtractMatch
+            try
             {
-                RuleId = "test",
-                RuleName = "通知テスト",
-                Matches = new List<string> { "TEST123" }
-            };
-            _ = HandleMatchAsync(testMatch);
+                var webhookUrl = GetWebhookUrl("ClipDiscordApp");
+                if (string.IsNullOrWhiteSpace(webhookUrl))
+                {
+                    System.Windows.MessageBox.Show("Webhook URL が設定されていません。", "設定エラー", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                var now = DateTime.Now;
+                var contentText = $"{now:yyyy-MM-dd HH:mm:ss} SELL";
+
+                var payload = new { content = contentText };
+                var json = JsonSerializer.Serialize(payload);
+                using var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var resp = await _httpClient.PostAsync(webhookUrl, httpContent);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    Debug.WriteLine($"[BtnTestNotification] Discord送信失敗: {(int)resp.StatusCode} {resp.ReasonPhrase}");
+                    System.Windows.MessageBox.Show($"送信失敗: {(int)resp.StatusCode} {resp.ReasonPhrase}", "送信エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                else
+                {
+                    Debug.WriteLine("[BtnTestNotification] Discord送信成功");
+                    System.Windows.MessageBox.Show("送信完了", "通知", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[BtnTestNotification] 例外: {ex}");
+                System.Windows.MessageBox.Show($"例外が発生しました: {ex.Message}", "例外", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void BtnOpenRules_Click(object sender, RoutedEventArgs e)
@@ -500,6 +529,37 @@ namespace ClipDiscordApp
         {
             [System.Runtime.InteropServices.DllImport("gdi32.dll")]
             public static extern bool DeleteObject(IntPtr hObject);
+        }
+
+        private string GetWebhookUrl(string key = "ClipDiscordApp")
+        {
+            try
+            {
+                var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "discord_webhooks.json");
+                if (!File.Exists(configPath))
+                {
+                    Debug.WriteLine($"[GetWebhookUrl] 設定ファイルが見つかりません: {configPath}");
+                    return string.Empty;
+                }
+
+                var json = File.ReadAllText(configPath, Encoding.UTF8);
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty(key, out var val))
+                {
+                    var url = val.GetString();
+                    if (!string.IsNullOrWhiteSpace(url)) return url.Trim();
+                }
+                else
+                {
+                    Debug.WriteLine($"[GetWebhookUrl] キー '{key}' が設定ファイルに見つかりません");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[GetWebhookUrl] 読み込みエラー: {ex.Message}");
+            }
+
+            return string.Empty;
         }
     }
 }

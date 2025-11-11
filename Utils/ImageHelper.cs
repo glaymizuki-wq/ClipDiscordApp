@@ -85,5 +85,17 @@ namespace ClipDiscordApp.Utils
             double diffRatio = (double)diffCount / totalPixels;
             return diffRatio > threshold;
         }
+
+        private static Bitmap CropRightRegion(Bitmap src, double pct = 0.3)
+        {
+            if (src == null) throw new ArgumentNullException(nameof(src));
+            pct = Math.Clamp(pct, 0.05, 0.9);
+            int w = src.Width;
+            int h = src.Height;
+            int x = Math.Max(0, (int)(w * (1.0 - pct)));
+            int cw = w - x;
+            var rect = new Rectangle(x, 0, cw, h);
+            return src.Clone(rect, src.PixelFormat);
+        }
     }
 }

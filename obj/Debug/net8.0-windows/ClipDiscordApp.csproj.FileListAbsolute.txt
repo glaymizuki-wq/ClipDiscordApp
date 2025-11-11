@@ -38,3 +38,4 @@ C:\Users\glaym\source\repos\ClipDiscordApp\bin\Debug\net8.0-windows\runtimes\win
 C:\Users\glaym\source\repos\ClipDiscordApp\bin\Debug\net8.0-windows\runtimes\win-x64\native\opencv_videoio_ffmpeg4110_64.dll
 C:\Users\glaym\source\repos\ClipDiscordApp\bin\Debug\net8.0-windows\runtimes\win-x86\native\OpenCvSharpExtern.dll
 C:\Users\glaym\source\repos\ClipDiscordApp\bin\Debug\net8.0-windows\runtimes\win-x86\native\opencv_videoio_ffmpeg4110.dll
+C:\Users\glaym\source\repos\ClipDiscordApp\obj\Debug\net8.0-windows\ClipDiscordApp.sourcelink.json

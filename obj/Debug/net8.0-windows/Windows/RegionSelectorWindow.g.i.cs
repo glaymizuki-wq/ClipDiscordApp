@@ -77,7 +77,7 @@ namespace ClipDiscordApp {
                 return;
             }
             _contentLoaded = true;
-            System.Uri resourceLocater = new System.Uri("/ClipDiscordApp;V1.0.0.0;component/windows/regionselectorwindow.xaml", System.UriKind.Relative);
+            System.Uri resourceLocater = new System.Uri("/ClipDiscordApp;component/windows/regionselectorwindow.xaml", System.UriKind.Relative);
             
             #line 1 "..\..\..\..\Windows\RegionSelectorWindow.xaml"
             System.Windows.Application.LoadComponent(this, resourceLocater);
