@@ -150,6 +150,29 @@ namespace YourNamespace.Ocr
             }
         }
 
+        // 既存クラスがある前提。なければ別ファイルで同名 static クラスを作る。
+        public static Bitmap GetGrayBitmap(Bitmap prepped)
+        {
+            if (prepped == null) return null;
+            var bmp = new Bitmap(prepped.Width, prepped.Height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                var cm = new System.Drawing.Imaging.ColorMatrix(new float[][]
+                {
+                new float[] {0.299f, 0.299f, 0.299f, 0, 0},
+                new float[] {0.587f, 0.587f, 0.587f, 0, 0},
+                new float[] {0.114f, 0.114f, 0.114f, 0, 0},
+                new float[] {0,      0,      0,      1, 0},
+                new float[] {0,      0,      0,      0, 1}
+                });
+                var ia = new System.Drawing.Imaging.ImageAttributes();
+                ia.SetColorMatrix(cm);
+                g.DrawImage(prepped, new Rectangle(0, 0, prepped.Width, prepped.Height),
+                    0, 0, prepped.Width, prepped.Height, GraphicsUnit.Pixel, ia);
+            }
+            return bmp;
+        }
+
         // EnhanceAndOutline メソッド（差し替え用 完全版）
         // 入力: 単一チャネルの Mat (グレースケール)
         // 出力: 新たに生成された Mat（caller が Dispose すること）
