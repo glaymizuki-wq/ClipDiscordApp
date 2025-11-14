@@ -34,10 +34,25 @@ namespace ClipDiscordApp
         private CancellationTokenSource _monitorCts;
         private string _logsDir;
         private string? _lastPreviewHash = null;
+        // ====== 追加フィールド（クラス内 Fields セクション付近に追記） ======
+        private CancellationTokenSource? _previewCts;
+        private Task? _previewTask;
+        private readonly int _previewIntervalMs = 200; // UI 更新間隔（ms）
+        private string? _previewLastHash = null;
+        // 既にある場合は重複しないよう流用する
+        private bool _skipFirstFrameAfterStart = true;    // 監視開始直後は判定をスキップするフラグ
+        private bool _waitingForNextFrameAfterNotify = false; // 通知後は次の画像更新まで待つフラグ
 
         // Selection UI helpers
         private System.Windows.Point? _dragStart;
         private System.Windows.Shapes.Rectangle? _selectionRectVisual;
+
+        // フィールド（クラス内）
+        private string _lastSentMessage;
+        private DateTime _lastSentAt = DateTime.MinValue;
+        private readonly TimeSpan _duplicateWindow = TimeSpan.FromSeconds(10);
+        
+        private static readonly HttpClient _discordHttpClient = new HttpClient() { Timeout = TimeSpan.FromSeconds(8) };
 
         // ---------- Constructor ----------
         public MainWindow()
@@ -124,9 +139,76 @@ namespace ClipDiscordApp
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    try
-                    {
-                        using var frame = CaptureFrameBitmap();
+                        try
+                        {
+#if !DEBUG
+                            var tokyoNow = GetTokyoNow();
+                            int hour = tokyoNow.Hour;
+                            if (hour < 8 || hour >= 24)
+                            {
+                                // UI に一時的に表示（Dispatcher 経由）
+                                try
+                                {
+                                    Dispatcher.BeginInvoke(new Action(() =>
+                                    {
+                                        StatusText.Text = $"Paused (time filter) {tokyoNow:HH:mm}";
+                                    }));
+                                }
+                                catch (Exception ex)
+                                {
+                                    Debug.WriteLine($"[TimeFilter] Dispatcher update failed: {ex}");
+                                }
+
+                                // 1分ごとにチェック（キャンセル可能）
+                                try
+                                {
+                                    await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken);
+                                }
+                                catch (OperationCanceledException)
+                                {
+                                    // 呼び出し元のキャンセルをそのまま伝播（ループ外で適切に処理される想定）
+                                    throw;
+                                }
+                                catch (Exception ex)
+                                {
+                                    // Delay 以外の一時的なエラーをログに残して継続
+                                    Debug.WriteLine($"[TimeFilter] Delay failed: {ex}");
+                                }
+
+                                continue;
+                            }
+                            else
+                            {
+                                try
+                                {
+                                    Dispatcher.BeginInvoke(new Action(() =>
+                                    {
+                                        if (StatusText.Text.StartsWith("Paused (time filter)"))
+                                            StatusText.Text = "Monitoring...";
+                                    }));
+                                }
+                                catch (Exception ex)
+                                {
+                                    Debug.WriteLine($"[TimeFilter] Dispatcher update failed: {ex}");
+                                }
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            // 明示的にキャンセルは上位に伝えるかループを抜ける
+                            throw;
+                        }
+                        catch (Exception ex)
+                        {
+                            // 想定外の例外はログに残して監視を継続
+                            Debug.WriteLine($"[TimeFilter] unexpected error: {ex}");
+                        }
+#else
+                            // Debug ビルド時はスキップ（ログを残す）
+                            Debug.WriteLine("[TimeFilter] skipped in DEBUG build");
+#endif
+
+                            using var frame = CaptureFrameBitmap();
                         if (frame == null)
                         {
                             await Task.Delay(200, cancellationToken);
@@ -135,6 +217,98 @@ namespace ClipDiscordApp
 
                         using var roi = CropToRegion(frame, initialRegion);
                         using var prepped = OcrPreprocessor.Preprocess(roi, prepParams);
+
+                        // --- 画像変化トリガ（Insert here: after prepped is available） ---
+                        string currentHash;
+                        using (var tmpForHash = (Bitmap)prepped.Clone()) // ComputeSimpleHash expects Bitmap
+                        {
+                            currentHash = ComputeSimpleHash(tmpForHash);
+                        }
+
+                        // 起動直後は最初のフレームをキャプチャだけして判定を行わない
+                        if (_skipFirstFrameAfterStart)
+                        {
+                            _lastPreviewHash = currentHash;
+                            _skipFirstFrameAfterStart = false;
+                            Debug.WriteLine("[Monitor] Warm-up: saved first frame hash, skipping detection");
+                            await Task.Delay(200, cancellationToken);
+                            continue;
+                        }
+
+                        // もし通知済みで、まだ次の画像更新を待っているならハッシュ変化で解除するまで待つ
+                        if (_waitingForNextFrameAfterNotify)
+                        {
+                            if (_lastPreviewHash != currentHash)
+                            {
+                                Debug.WriteLine("[Monitor] Image changed after notify -> proceed");
+                                _waitingForNextFrameAfterNotify = false;
+                                _lastPreviewHash = currentHash;
+                            }
+                            else
+                            {
+                                // 画像変化なしなら判定スキップ
+                                Debug.WriteLine("[Monitor] Waiting for next update after notify (no change)");
+                                await Task.Delay(200, cancellationToken);
+                                continue;
+                            }
+                        }
+                        else
+                        {
+                            // 通常モード: 画像が同じならテンプレ/ OCR をスキップ
+                            if (_lastPreviewHash != null && _lastPreviewHash == currentHash)
+                            {
+                                Debug.WriteLine("[Monitor] No visual change detected -> skip detection");
+                                await Task.Delay(200, cancellationToken);
+                                continue;
+                            }
+
+                            // 画像が変わっていれば次処理へ（かつ lastHash を更新）
+                            _lastPreviewHash = currentHash;
+                            Debug.WriteLine("[Monitor] Visual change detected -> run detection");
+                            // Visual change detected -> update UI preview with the new preprocessed ROI image
+                            try
+                            {
+                                // prepped is the Mat/Bitmap you already have for detection.
+                                // If prepped is an OpenCvSharp Mat use appropriate conversion; here prepped is a Bitmap in your code path.
+                                using var tmpForUi = (Bitmap)prepped.Clone();
+                                var bs = BitmapToBitmapSource(tmpForUi); // 既存経路
+                                if (bs.CanFreeze) bs.Freeze();
+
+                                Dispatcher.BeginInvoke(new Action(() =>
+                                {
+                                    try
+                                    {
+                                        CapturedImage.Source = bs;
+                                        // OverlayCanvas サイズ同期が必要ならここで行う
+                                        var src = PresentationSource.FromVisual(this);
+                                        double dpiScaleX = src?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+                                        double dpiScaleY = src?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
+                                        OverlayCanvas.Width = Math.Round(bs.PixelWidth / dpiScaleX);
+                                        OverlayCanvas.Height = Math.Round(bs.PixelHeight / dpiScaleY);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Debug.WriteLine($"[UISet] failed: {ex}");
+                                    }
+                                }), DispatcherPriority.Render);
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine($"[MonitorPreview] preview update failed: {ex}");
+                            }
+
+                            // optional: save debug image for visual inspection
+                            try
+                            {
+                                var dbg = Path.Combine(_logDir, $"dbg_preview_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.png");
+                                prepped.Save(dbg);
+                                Debug.WriteLine($"[MonitorPreview] saved debug preview: {dbg}");
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine($"[MonitorPreview] debug save failed: {ex.Message}");
+                            }
+                        }
 
                         // Debug save preprocessed
                         try
@@ -190,6 +364,8 @@ namespace ClipDiscordApp
                                         _lastNotified[key] = DateTime.UtcNow;
                                         _ = Task.Run(() => HandleMatchAsync(m));
                                         Debug.WriteLine($"[OCR] Match(from template): rule={m.RuleName} matches=[{string.Join(',', m.Matches)}]");
+                                        _waitingForNextFrameAfterNotify = true;
+                                        Debug.WriteLine("[Monitor] Notified -> will wait for next visual change before next detection");
                                     }
                                 }
 
@@ -309,6 +485,8 @@ namespace ClipDiscordApp
                                         _lastNotified[key] = DateTime.UtcNow;
                                         _ = Task.Run(() => HandleMatchAsync(m));
                                         Debug.WriteLine($"[OCR] Match(from OCR): rule={m.RuleName} matches=[{string.Join(',', m.Matches)}]");
+                                        _waitingForNextFrameAfterNotify = true;
+                                        Debug.WriteLine("[Monitor] Notified -> will wait for next visual change before next detection");
                                     }
                                 }
                             }
@@ -344,7 +522,7 @@ namespace ClipDiscordApp
                         await Task.Delay(200, cancellationToken);
                         continue;
                     }
-                } // end while
+                } // end whil
             }
             catch (OperationCanceledException)
             {
@@ -428,12 +606,54 @@ namespace ClipDiscordApp
             }
         }
 
+        // 置き換え用メソッド
         private async Task HandleMatchAsync(ExtractMatch match)
         {
             try
             {
                 Debug.WriteLine($"[HandleMatchAsync] Handling match rule={match.RuleName} text={string.Join(",", match.Matches)}");
-                await Task.Delay(1);
+
+                // マッチ文字列の決定: BUY/SELL 優先で探す
+                string matchText = null;
+                if (match?.Matches != null && match.Matches.Count > 0)
+                {
+                    matchText = match.Matches.FirstOrDefault(m => string.Equals(m, "BUY", StringComparison.OrdinalIgnoreCase))
+                                ?? match.Matches.FirstOrDefault(m => string.Equals(m, "SELL", StringComparison.OrdinalIgnoreCase))
+                                ?? match.Matches.FirstOrDefault();
+                }
+                if (string.IsNullOrWhiteSpace(matchText))
+                {
+                    Debug.WriteLine("[HandleMatchAsync] no match text to send");
+                    return;
+                }
+
+                // 重複抑止
+                if (_lastSentMessage == matchText && (DateTime.UtcNow - _lastSentAt) < _duplicateWindow)
+                {
+                    Debug.WriteLine("[HandleMatchAsync] suppressed duplicate message");
+                    return;
+                }
+                _lastSentMessage = matchText;
+                _lastSentAt = DateTime.UtcNow;
+
+                // Webhook を取得して送信
+                var webhookUrl = GetWebhookUrl("DetectionChannel");
+                if (string.IsNullOrWhiteSpace(webhookUrl))
+                {
+                    Debug.WriteLine("[HandleMatchAsync] DetectionChannel webhook not configured");
+                    return;
+                }
+
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(_monitoringCts?.Token ?? CancellationToken.None);
+                cts.CancelAfter(TimeSpan.FromSeconds(15));
+
+                try
+                {
+                    var ok = await NotifyDiscordAsync(webhookUrl, matchText, cts.Token);
+                    Debug.WriteLine($"[HandleMatchAsync] discord notify result={ok}");
+                }
+                catch (OperationCanceledException) { Debug.WriteLine("[HandleMatchAsync] notify cancelled"); }
+                catch (Exception ex) { Debug.WriteLine($"[HandleMatchAsync] notify error: {ex}"); }
             }
             catch (Exception ex)
             {
@@ -458,6 +678,7 @@ namespace ClipDiscordApp
         // ---------- XAML Event Handlers (UI binding) ----------
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
+            InitSelectionVisual();
             _logsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
             Directory.CreateDirectory(_logsDir);
 
@@ -489,10 +710,24 @@ namespace ClipDiscordApp
 
         private void BtnStopMonitoring_Click(object sender, RoutedEventArgs e)
         {
-            _monitoringCts?.Cancel();
+            // 1) 停止対象のプレビュータスクを確実に止める
+            StopPreviewLoop();
+
+            // 2) 監視ループをキャンセル
+            try { _monitoringCts?.Cancel(); } catch { }
+
+            // 3) 内部フラグを必要ならリセット（次回開始時の安全策）
+            _skipFirstFrameAfterStart = false;
+            _waitingForNextFrameAfterNotify = false;
+            _lastPreviewHash = null;
+            _previewLastHash = null;
+
+            // 4) UI 更新
             BtnStartMonitoring.IsEnabled = true;
             BtnStopMonitoring.IsEnabled = false;
             StatusText.Text = "Stopped";
+
+            Debug.WriteLine("[BtnStop] Monitoring and preview stopped");
         }
 
         private void BtnSelectRegion_Click(object sender, RoutedEventArgs e)
@@ -507,6 +742,22 @@ namespace ClipDiscordApp
                     _selectedRegion = sel;
                     StatusText.Text = $"Region selected: {_selectedRegion.X},{_selectedRegion.Y} {_selectedRegion.Width}x{_selectedRegion.Height}";
                     DrawSelectionOnOverlay(_selectedRegion);
+                    // Immediate preview of the selected region (show one snapshot)
+                    try
+                    {
+                        using var full = CaptureFrameBitmap();
+                        using var crop = CropToRegion(full, _selectedRegion);
+                        var bs = BitmapToBitmapSource(crop);
+                        Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            try { CapturedImage.Source = bs; }
+                            catch (Exception ex) { Debug.WriteLine($"[StartPreview] UI set failed: {ex.Message}"); }
+                        }), DispatcherPriority.Render);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[StartPreview] capture/display failed: {ex}");
+                    }
                 }
                 else
                 {
@@ -522,37 +773,61 @@ namespace ClipDiscordApp
 
         private async void BtnTestNotification_Click(object sender, RoutedEventArgs e)
         {
+            BtnTestNotification.IsEnabled = false;
             try
             {
-                var webhookUrl = GetWebhookUrl("ClipDiscordApp");
+                var webhookUrl = GetWebhookUrl("TestChannel");
                 if (string.IsNullOrWhiteSpace(webhookUrl))
                 {
                     System.Windows.MessageBox.Show("Webhook URL が設定されていません。", "設定エラー", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
-                var now = DateTime.Now;
-                var contentText = $"{now:yyyy-MM-dd HH:mm:ss} SELL";
-                var payload = new { content = contentText };
-                var json = JsonSerializer.Serialize(payload);
-                using var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
-
-                var resp = await _httpClient.PostAsync(webhookUrl, httpContent);
-                if (!resp.IsSuccessStatusCode)
+                var userText = (txtNotificationContent?.Text ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(userText))
                 {
-                    Debug.WriteLine($"[BtnTestNotification] Discord送信失敗: {(int)resp.StatusCode} {resp.ReasonPhrase}");
-                    System.Windows.MessageBox.Show($"送信失敗: {(int)resp.StatusCode} {resp.ReasonPhrase}", "送信エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                    System.Windows.MessageBox.Show("送信するメッセージを入力してください。", "入力エラー", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    txtNotificationContent.Focus();
+                    return;
                 }
-                else
+
+                var now = DateTime.Now;
+                var contentText = $"{now:yyyy-MM-dd HH:mm:ss} {userText}";
+
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                bool ok = false;
+
+                try
+                {
+                    ok = await NotifyDiscordAsync(webhookUrl, contentText, cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    Debug.WriteLine("[BtnTestNotification] Discord send cancelled/timed out");
+                    System.Windows.MessageBox.Show("送信がキャンセルまたはタイムアウトしました。", "送信中断", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[BtnTestNotification] notify exception: {ex}");
+                    System.Windows.MessageBox.Show($"例外が発生しました: {ex.Message}", "例外", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                if (ok)
                 {
                     Debug.WriteLine("[BtnTestNotification] Discord送信成功");
                     System.Windows.MessageBox.Show("送信完了", "通知", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
+                else
+                {
+                    Debug.WriteLine("[BtnTestNotification] Discord送信失敗（詳細はログを確認してください）");
+                    System.Windows.MessageBox.Show("送信失敗（詳細はログを確認してください）", "送信エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             }
-            catch (Exception ex)
+            finally
             {
-                Debug.WriteLine($"[BtnTestNotification] 例外: {ex}");
-                System.Windows.MessageBox.Show($"例外が発生しました: {ex.Message}", "例外", MessageBoxButton.OK, MessageBoxImage.Error);
+                BtnTestNotification.IsEnabled = true;
             }
         }
 
@@ -687,35 +962,83 @@ namespace ClipDiscordApp
         {
             try
             {
-                var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "discord_webhooks.json");
-                if (!File.Exists(configPath))
+                // 探索候補順: 実行フォルダ -> %APPDATA%\<App>\ -> 環境変数
+                var exeDir = AppDomain.CurrentDomain.BaseDirectory;
+                var candidates = new[]
                 {
-                    Debug.WriteLine($"[GetWebhookUrl] 設定ファイルが見つかりません: {configPath}");
-                    return string.Empty;
+            Path.Combine(exeDir, "discord_webhooks.json"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClipDiscordApp", "discord_webhooks.json")
+        };
+
+                foreach (var configPath in candidates)
+                {
+                    if (!File.Exists(configPath))
+                    {
+                        Debug.WriteLine($"[GetWebhookUrl] config not found: {configPath}");
+                        continue;
+                    }
+
+                    string json;
+                    try
+                    {
+                        json = File.ReadAllText(configPath, Encoding.UTF8);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[GetWebhookUrl] could not read {configPath}: {ex}");
+                        continue;
+                    }
+
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(json);
+                        if (doc.RootElement.TryGetProperty(key, out var val) && val.ValueKind == JsonValueKind.String)
+                        {
+                            var url = val.GetString()?.Trim();
+                            if (!string.IsNullOrEmpty(url) && Uri.TryCreate(url, UriKind.Absolute, out var u) && (u.Scheme == "https" || u.Scheme == "http"))
+                            {
+                                Debug.WriteLine($"[GetWebhookUrl] loaded webhook from {configPath}");
+                                return url;
+                            }
+                            Debug.WriteLine($"[GetWebhookUrl] invalid or empty url for key '{key}' in {configPath}");
+                        }
+                        else
+                        {
+                            Debug.WriteLine($"[GetWebhookUrl] key '{key}' not found or not a string in {configPath}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[GetWebhookUrl] parse error in {configPath}: {ex}");
+                    }
                 }
 
-                var json = File.ReadAllText(configPath, Encoding.UTF8);
-                using var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty(key, out var val))
+                // 環境変数フォールバック
+                var envKey = $"DISCORD_WEBHOOK_{key.ToUpperInvariant()}";
+                var envUrl = Environment.GetEnvironmentVariable(envKey);
+                if (!string.IsNullOrWhiteSpace(envUrl) && Uri.TryCreate(envUrl.Trim(), UriKind.Absolute, out var envUri))
                 {
-                    var url = val.GetString();
-                    if (!string.IsNullOrWhiteSpace(url)) return url.Trim();
+                    Debug.WriteLine($"[GetWebhookUrl] loaded webhook from ENV {envKey}");
+                    return envUrl.Trim();
                 }
-                else
-                {
-                    Debug.WriteLine($"[GetWebhookUrl] キー '{key}' が設定ファイルに見つかりません");
-                }
+
+                Debug.WriteLine("[GetWebhookUrl] webhook not found in any candidate locations");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[GetWebhookUrl] 読み込みエラー: {ex.Message}");
+                Debug.WriteLine($"[GetWebhookUrl] unexpected error: {ex}");
             }
 
-            return string.Empty;
+            return null;
         }
 
         private void BtnStartMonitoring_Click(object sender, RoutedEventArgs e)
         {
+            StartPreviewLoop();
+            _skipFirstFrameAfterStart = true;
+            _waitingForNextFrameAfterNotify = false;
+            _lastPreviewHash = null;
+
             var selector = new RegionSelectorWindow { Owner = this };
             var dlg = selector.ShowDialog();
             if (dlg != true)
@@ -728,6 +1051,37 @@ namespace ClipDiscordApp
             var selRect = new System.Windows.Rect(d.X, d.Y, d.Width, d.Height);
             _selectedRegion = ConvertImageRectToBitmapRect(selRect, CapturedImage);
             DrawSelectionOnOverlay(_selectedRegion);
+
+            // --- immediate snapshot of the selected region and set overlay size ---
+            try
+            {
+                using var full = CaptureFrameBitmap();
+                using var crop = CropToRegion(full, _selectedRegion);
+                var bs = BitmapToBitmapSource(crop); // 既存経路
+                if (bs.CanFreeze) bs.Freeze();
+
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        CapturedImage.Source = bs;
+                        // OverlayCanvas サイズ同期が必要ならここで行う
+                        var src = PresentationSource.FromVisual(this);
+                        double dpiScaleX = src?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+                        double dpiScaleY = src?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
+                        OverlayCanvas.Width = Math.Round(bs.PixelWidth / dpiScaleX);
+                        OverlayCanvas.Height = Math.Round(bs.PixelHeight / dpiScaleY);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[UISet] failed: {ex}");
+                    }
+                }), DispatcherPriority.Render);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[StartPreview] capture/display failed outer: {ex.Message}");
+            }
 
             BtnStartMonitoring.IsEnabled = false;
             BtnStopMonitoring.IsEnabled = true;
@@ -750,10 +1104,24 @@ namespace ClipDiscordApp
                     () => LoadRules(),
                     (bmpSource) =>
                     {
+                        // Preview callback from MonitorService: update UI and overlay size
                         Dispatcher.BeginInvoke(new Action(() =>
                         {
-                            try { CapturedImage.Source = bmpSource; } catch (Exception ex) { Debug.WriteLine($"[MainWindow] preview set failed: {ex.Message}"); }
-                        }));
+                            try
+                            {
+                                CapturedImage.Source = bmpSource;
+
+                                var src = PresentationSource.FromVisual(this);
+                                double dpiScaleX = src?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+                                double dpiScaleY = src?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
+
+                                OverlayCanvas.Width = Math.Round(bmpSource.PixelWidth / dpiScaleX);
+                                OverlayCanvas.Height = Math.Round(bmpSource.PixelHeight / dpiScaleY);
+
+                                Debug.WriteLine($"[MainWindow] preview set {bmpSource.PixelWidth}x{bmpSource.PixelHeight}, overlay {OverlayCanvas.Width}x{OverlayCanvas.Height}");
+                            }
+                            catch (Exception ex) { Debug.WriteLine($"[MainWindow] preview set failed: {ex.Message}"); }
+                        }), DispatcherPriority.Render);
                     });
             }
 
@@ -827,6 +1195,199 @@ namespace ClipDiscordApp
                 (int)Math.Max(1, selRectInImage.Width),
                 (int)Math.Max(1, selRectInImage.Height)
             );
+        }
+
+        // ====== InitSelectionVisual の追加（Window_Loaded から呼ぶ） ======
+        private void InitSelectionVisual()
+        {
+            // OverlayCanvas に選択矩形用のビジュアルがまだなければ準備する
+            try
+            {
+                // 既に _selectionRectVisual を使っているため、ここでは何もしない場合が多いが
+                // OverlayCanvas の初期状態確認や背景設定などを行う余地を残す。
+                OverlayCanvas.Background = System.Windows.Media.Brushes.Transparent;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[InitSelectionVisual] {ex}");
+            }
+        }
+
+        // ====== プレビュー開始/停止 ======
+        private void StartPreviewLoop()
+        {
+            if (_previewTask != null && !_previewTask.IsCompleted) return;
+            _previewCts = new CancellationTokenSource();
+            var ct = _previewCts.Token;
+            _previewTask = Task.Run(async () =>
+            {
+                while (!ct.IsCancellationRequested)
+                {
+                    try
+                    {
+                        using var bmp = CaptureFrameBitmap();
+                        if (bmp != null)
+                        {
+                            // If a selected region exists, crop; otherwise show full screen
+                            Bitmap toShow;
+                            if (_selectedRegion.Width > 0 && _selectedRegion.Height > 0)
+                            {
+                                var safeR = new System.Drawing.Rectangle(
+                                    Math.Max(0, Math.Min(_selectedRegion.X, bmp.Width - 1)),
+                                    Math.Max(0, Math.Min(_selectedRegion.Y, bmp.Height - 1)),
+                                    Math.Max(1, Math.Min(_selectedRegion.Width, Math.Max(1, bmp.Width - _selectedRegion.X))),
+                                    Math.Max(1, Math.Min(_selectedRegion.Height, Math.Max(1, bmp.Height - _selectedRegion.Y)))
+                                );
+                                try
+                                {
+                                    toShow = bmp.Clone(safeR, bmp.PixelFormat);
+                                }
+                                catch (Exception ex)
+                                {
+                                    Debug.WriteLine($"[Preview] crop failed, using full bmp: {ex.Message}");
+                                    toShow = (Bitmap)bmp.Clone();
+                                }
+                            }
+                            else
+                            {
+                                toShow = (Bitmap)bmp.Clone();
+                            }
+
+                            // 変化検出（軽いハッシュ）: 変わっていなければ UI 更新をスキップ
+                            string hash = ComputeSimpleHash(toShow);
+                            if (_previewLastHash != null && _previewLastHash == hash)
+                            {
+                                Debug.WriteLine("[Preview] hash unchanged -> skip UI update");
+                                toShow.Dispose();
+                            }
+                            else
+                            {
+                                _previewLastHash = hash;
+                                var bs = BitmapToBitmapSource(toShow); // 既存経路
+                                if (bs.CanFreeze) bs.Freeze();
+
+                                Dispatcher.BeginInvoke(new Action(() =>
+                                {
+                                    try
+                                    {
+                                        CapturedImage.Source = bs;
+                                        // OverlayCanvas サイズ同期が必要ならここで行う
+                                        var src = PresentationSource.FromVisual(this);
+                                        double dpiScaleX = src?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+                                        double dpiScaleY = src?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
+                                        OverlayCanvas.Width = Math.Round(bs.PixelWidth / dpiScaleX);
+                                        OverlayCanvas.Height = Math.Round(bs.PixelHeight / dpiScaleY);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Debug.WriteLine($"[UISet] failed: {ex}");
+                                    }
+                                }), DispatcherPriority.Render);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[PreviewLoop] Exception: {ex}");
+                    }
+
+                    try { await Task.Delay(_previewIntervalMs, ct); }
+                    catch (TaskCanceledException) { break; }
+                }
+            }, ct);
+        }
+
+        private void StopPreviewLoop()
+        {
+            try
+            {
+                if (_previewCts != null && !_previewCts.IsCancellationRequested)
+                {
+                    _previewCts.Cancel();
+                    try { _previewTask?.Wait(300); } catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[StopPreviewLoop] {ex}");
+            }
+            finally
+            {
+                _previewTask = null;
+                _previewCts?.Dispose();
+                _previewCts = null;
+            }
+        }
+
+        private async Task<bool> NotifyDiscordAsync(string webhookUrl, string content, CancellationToken ct, int maxRetries = 3)
+        {
+            if (string.IsNullOrWhiteSpace(webhookUrl)) { Debug.WriteLine("[Discord] webhook empty"); return false; }
+
+            var payload = new { content = content };
+            var json = System.Text.Json.JsonSerializer.Serialize(payload);
+            var attempt = 0;
+            var backoff = TimeSpan.FromSeconds(1);
+
+            while (attempt < maxRetries)
+            {
+                attempt++;
+                using var body = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                try
+                {
+                    using var resp = await _discordHttpClient.PostAsync(webhookUrl, body, ct);
+                    if (resp.IsSuccessStatusCode) return true;
+
+                    if ((int)resp.StatusCode == 401)
+                    {
+                        Debug.WriteLine("[Discord] Unauthorized 401 - webhook invalid");
+                        return false;
+                    }
+
+                    if ((int)resp.StatusCode == 429)
+                    {
+                        if (resp.Headers.RetryAfter?.Delta is TimeSpan delta) await Task.Delay(delta, ct);
+                        else await Task.Delay(backoff, ct);
+                        backoff = backoff * 2;
+                        continue;
+                    }
+
+                    if ((int)resp.StatusCode >= 400 && (int)resp.StatusCode < 500)
+                    {
+                        var txt = await resp.Content.ReadAsStringAsync(ct);
+                        Debug.WriteLine($"[Discord] client error {(int)resp.StatusCode}: {txt}");
+                        return false;
+                    }
+
+                    var serverBody = await resp.Content.ReadAsStringAsync(ct);
+                    Debug.WriteLine($"[Discord] server error {(int)resp.StatusCode}: {serverBody}");
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex) { Debug.WriteLine($"[Discord] send exception: {ex}"); }
+
+                try { await Task.Delay(backoff, ct); } catch (OperationCanceledException) { throw; }
+                backoff = backoff * 2;
+            }
+
+            Debug.WriteLine("[Discord] send failed after retries");
+            return false;
+        }
+
+        private DateTime GetTokyoNow()
+        {
+            try
+            {
+                // Windows/Linux で ID が異なるため両方試す
+                TimeZoneInfo tz = null;
+                try { tz = TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time"); } catch { }
+                if (tz == null)
+                {
+                    try { tz = TimeZoneInfo.FindSystemTimeZoneById("Asia/Tokyo"); } catch { }
+                }
+                if (tz != null) return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
+            }
+            catch { }
+            // フェールセーフでローカル時刻（開発環境向け）
+            return DateTime.Now;
         }
     }
 }

@@ -3,8 +3,32 @@
   "WorkspaceRootPath": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\mainwindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:mainwindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\app.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:app.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\models\\appsettings.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:models\\appsettings.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\app.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:app.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\clipdiscordapp.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}|",
+      "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:clipdiscordapp.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}|"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\services\\templatematcher.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:services\\templatematcher.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\utils\\ocrtextutils.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
@@ -27,10 +51,6 @@
       "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:services\\monitorservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\services\\templatematcher.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:services\\templatematcher.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
       "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\services\\ocrpreprocessorextensions.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:services\\ocrpreprocessorextensions.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
@@ -41,10 +61,6 @@
     {
       "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\services\\ocrpreprocessor.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:services\\ocrpreprocessor.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
-      "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\models\\labelcandidate.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
@@ -89,10 +105,6 @@
       "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:models\\drawingrect.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\clipdiscordapp.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}|",
-      "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:clipdiscordapp.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}|"
-    },
-    {
       "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\models\\settingsmodel.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:models\\settingsmodel.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
@@ -129,16 +141,8 @@
       "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:models\\captureresult.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\app.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:app.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
       "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\utils\\settingsstore.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:utils\\settingsstore.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\models\\appsettings.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|solutionrelative:models\\appsettings.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{A4D4030C-24A2-4095-9727-2A9F27009E79}|ClipDiscordApp.csproj|c:\\users\\glaym\\source\\repos\\clipdiscordapp\\models\\watchregion.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
@@ -152,62 +156,36 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 0,
+          "SelectedChildIndex": 7,
           "Children": [
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 2,
+              "Title": "App.xaml",
+              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\App.xaml",
+              "RelativeDocumentMoniker": "App.xaml",
+              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\App.xaml",
+              "RelativeToolTip": "App.xaml",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
+              "WhenOpened": "2025-11-14T19:01:43.272Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
               "Title": "MainWindow.xaml.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\MainWindow.xaml.cs",
               "RelativeDocumentMoniker": "MainWindow.xaml.cs",
               "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\MainWindow.xaml.cs",
               "RelativeToolTip": "MainWindow.xaml.cs",
-              "ViewState": "AgIAADYBAAAAAAAAAAAowGUBAAAAAAAAAAAAAA==",
+              "ViewState": "AgIAABMDAAAAAAAAAADgvx4DAABVAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-10-28T08:36:55.111Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
-              "Title": "ImageHelper.cs",
-              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Utils\\ImageHelper.cs",
-              "RelativeDocumentMoniker": "Utils\\ImageHelper.cs",
-              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Utils\\ImageHelper.cs",
-              "RelativeToolTip": "Utils\\ImageHelper.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAcAAAAeAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-06T02:24:40.113Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 6,
-              "Title": "TemplateMatcher.cs",
-              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\TemplateMatcher.cs",
-              "RelativeDocumentMoniker": "Services\\TemplateMatcher.cs",
-              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\TemplateMatcher.cs",
-              "RelativeToolTip": "Services\\TemplateMatcher.cs",
-              "ViewState": "AgIAAMEAAAAAAAAAAAAowOkAAAABAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-11T11:59:03.801Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 7,
-              "Title": "OcrPreprocessorExtensions.cs",
-              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\OcrPreprocessorExtensions.cs",
-              "RelativeDocumentMoniker": "Services\\OcrPreprocessorExtensions.cs",
-              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\OcrPreprocessorExtensions.cs",
-              "RelativeToolTip": "Services\\OcrPreprocessorExtensions.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAACEAAAA0AAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-12T05:28:47.837Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 5,
+              "DocumentIndex": 11,
               "Title": "MonitorService.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\MonitorService.cs",
               "RelativeDocumentMoniker": "Services\\MonitorService.cs",
@@ -220,7 +198,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 4,
+              "DocumentIndex": 10,
               "Title": "OcrHelpers.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\OcrHelpers.cs",
               "RelativeDocumentMoniker": "Services\\OcrHelpers.cs",
@@ -233,7 +211,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 7,
               "Title": "OcrTextUtils.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Utils\\OcrTextUtils.cs",
               "RelativeDocumentMoniker": "Utils\\OcrTextUtils.cs",
@@ -246,7 +224,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 11,
+              "DocumentIndex": 15,
               "Title": "LabelCandidate.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Models\\LabelCandidate.cs",
               "RelativeDocumentMoniker": "Models\\LabelCandidate.cs",
@@ -258,7 +236,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 8,
               "Title": "OcrParser.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\OcrParser.cs",
               "RelativeDocumentMoniker": "Services\\OcrParser.cs",
@@ -271,43 +249,96 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 9,
-              "Title": "OcrPreprocessor.cs",
-              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\OcrPreprocessor.cs",
-              "RelativeDocumentMoniker": "Services\\OcrPreprocessor.cs",
-              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\OcrPreprocessor.cs",
-              "RelativeToolTip": "Services\\OcrPreprocessor.cs",
-              "ViewState": "AgIAAAwAAAAAAAAAAAAAAA8AAAAAAAAAAAAAAA==",
+              "DocumentIndex": 0,
+              "Title": "MainWindow.xaml",
+              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\MainWindow.xaml",
+              "RelativeDocumentMoniker": "MainWindow.xaml",
+              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\MainWindow.xaml*",
+              "RelativeToolTip": "MainWindow.xaml*",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
+              "WhenOpened": "2025-10-28T08:36:56.199Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "App.xaml.cs",
+              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\App.xaml.cs",
+              "RelativeDocumentMoniker": "App.xaml.cs",
+              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\App.xaml.cs",
+              "RelativeToolTip": "App.xaml.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAMAAAAKAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-10T08:52:24.579Z"
+              "WhenOpened": "2025-11-06T03:58:52.156Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "AppSettings.cs",
+              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Models\\AppSettings.cs",
+              "RelativeDocumentMoniker": "Models\\AppSettings.cs",
+              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Models\\AppSettings.cs",
+              "RelativeToolTip": "Models\\AppSettings.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAkAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-06T02:54:07.202Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",
               "DocumentIndex": 12,
-              "Title": "CaptureService.cs",
-              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\CaptureService.cs",
-              "RelativeDocumentMoniker": "Services\\CaptureService.cs",
-              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\CaptureService.cs",
-              "RelativeToolTip": "Services\\CaptureService.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAACcAAAAAAAAAAAAAAA==",
+              "Title": "OcrPreprocessorExtensions.cs",
+              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\OcrPreprocessorExtensions.cs",
+              "RelativeDocumentMoniker": "Services\\OcrPreprocessorExtensions.cs",
+              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\OcrPreprocessorExtensions.cs",
+              "RelativeToolTip": "Services\\OcrPreprocessorExtensions.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAACEAAAA0AAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-06T02:25:48.583Z"
+              "WhenOpened": "2025-11-12T05:28:47.837Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 15,
-              "Title": "OcrService.cs",
-              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\OcrService.cs",
-              "RelativeDocumentMoniker": "Services\\OcrService.cs",
-              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\OcrService.cs",
-              "RelativeToolTip": "Services\\OcrService.cs",
-              "ViewState": "AgIAALEAAAAAAAAAAAASwMYAAAAmAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-06T02:25:59.766Z"
+              "DocumentIndex": 5,
+              "Title": "ClipDiscordApp.csproj",
+              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\ClipDiscordApp.csproj",
+              "RelativeDocumentMoniker": "ClipDiscordApp.csproj",
+              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\ClipDiscordApp.csproj",
+              "RelativeToolTip": "ClipDiscordApp.csproj",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAqwCMAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
+              "WhenOpened": "2025-11-06T03:02:24.888Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 8,
+              "DocumentIndex": 6,
+              "Title": "TemplateMatcher.cs",
+              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\TemplateMatcher.cs",
+              "RelativeDocumentMoniker": "Services\\TemplateMatcher.cs",
+              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\TemplateMatcher.cs",
+              "RelativeToolTip": "Services\\TemplateMatcher.cs",
+              "ViewState": "AgIAAIkAAAAAAAAAAAAUwIsAAAAUAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-11T11:59:03.801Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 9,
+              "Title": "ImageHelper.cs",
+              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Utils\\ImageHelper.cs",
+              "RelativeDocumentMoniker": "Utils\\ImageHelper.cs",
+              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Utils\\ImageHelper.cs",
+              "RelativeToolTip": "Utils\\ImageHelper.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAcAAAAeAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-06T02:24:40.113Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 13,
               "Title": "OcrPreprocessorPresets.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Utils\\OcrPreprocessorPresets.cs",
               "RelativeDocumentMoniker": "Utils\\OcrPreprocessorPresets.cs",
@@ -319,18 +350,43 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 10,
-              "Title": "MainWindow.xaml",
-              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\MainWindow.xaml",
-              "RelativeDocumentMoniker": "MainWindow.xaml",
-              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\MainWindow.xaml",
-              "RelativeToolTip": "MainWindow.xaml",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
-              "WhenOpened": "2025-10-28T08:36:56.199Z"
+              "DocumentIndex": 14,
+              "Title": "OcrPreprocessor.cs",
+              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\OcrPreprocessor.cs",
+              "RelativeDocumentMoniker": "Services\\OcrPreprocessor.cs",
+              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\OcrPreprocessor.cs",
+              "RelativeToolTip": "Services\\OcrPreprocessor.cs",
+              "ViewState": "AgIAAAwAAAAAAAAAAAAAAA8AAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-10T08:52:24.579Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 17,
+              "DocumentIndex": 16,
+              "Title": "CaptureService.cs",
+              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\CaptureService.cs",
+              "RelativeDocumentMoniker": "Services\\CaptureService.cs",
+              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\CaptureService.cs",
+              "RelativeToolTip": "Services\\CaptureService.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAACcAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-06T02:25:48.583Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 19,
+              "Title": "OcrService.cs",
+              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\OcrService.cs",
+              "RelativeDocumentMoniker": "Services\\OcrService.cs",
+              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\OcrService.cs",
+              "RelativeToolTip": "Services\\OcrService.cs",
+              "ViewState": "AgIAALEAAAAAAAAAAAASwMYAAAAmAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-06T02:25:59.766Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 21,
               "Title": "ImageDiffService.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\ImageDiffService.cs",
               "RelativeDocumentMoniker": "Services\\ImageDiffService.cs",
@@ -342,7 +398,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 16,
+              "DocumentIndex": 20,
               "Title": "RegionSelectorWindow.xaml",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Windows\\RegionSelectorWindow.xaml",
               "RelativeDocumentMoniker": "Windows\\RegionSelectorWindow.xaml",
@@ -353,7 +409,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 14,
+              "DocumentIndex": 18,
               "Title": "OcrCaptureHelper.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Utils\\OcrCaptureHelper.cs",
               "RelativeDocumentMoniker": "Utils\\OcrCaptureHelper.cs",
@@ -365,7 +421,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 13,
+              "DocumentIndex": 17,
               "Title": "Microsoft.NET.Sdk.targets",
               "DocumentMoniker": "C:\\Program Files\\dotnet\\sdk\\9.0.306\\Sdks\\Microsoft.NET.Sdk\\targets\\Microsoft.NET.Sdk.targets",
               "RelativeDocumentMoniker": "..\\..\\..\\..\\..\\Program Files\\dotnet\\sdk\\9.0.306\\Sdks\\Microsoft.NET.Sdk\\targets\\Microsoft.NET.Sdk.targets",
@@ -377,7 +433,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 25,
+              "DocumentIndex": 28,
               "Title": "ExtractMatch.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Models\\ExtractMatch.cs",
               "RelativeDocumentMoniker": "Models\\ExtractMatch.cs",
@@ -389,7 +445,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 20,
+              "DocumentIndex": 24,
               "Title": "RegionSelectorWindow.xaml.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Windows\\RegionSelectorWindow.xaml.cs",
               "RelativeDocumentMoniker": "Windows\\RegionSelectorWindow.xaml.cs",
@@ -401,7 +457,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 27,
+              "DocumentIndex": 30,
               "Title": "RuleSettingsWindow.xaml.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Views\\RuleSettingsWindow.xaml.cs",
               "RelativeDocumentMoniker": "Views\\RuleSettingsWindow.xaml.cs",
@@ -413,7 +469,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 18,
+              "DocumentIndex": 22,
               "Title": "MonitorHelper.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Utils\\MonitorHelper.cs",
               "RelativeDocumentMoniker": "Utils\\MonitorHelper.cs",
@@ -425,7 +481,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 19,
+              "DocumentIndex": 23,
               "Title": "XamlReader.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\AppData\\Local\\Temp\\.vsdbgsrc\\a75b809e7404ed879613b4b654521b36cd1db878628548eff29acf3bab8c8326\\XamlReader.cs",
               "RelativeDocumentMoniker": "..\\..\\..\\AppData\\Local\\Temp\\.vsdbgsrc\\a75b809e7404ed879613b4b654521b36cd1db878628548eff29acf3bab8c8326\\XamlReader.cs",
@@ -438,7 +494,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 21,
+              "DocumentIndex": 25,
               "Title": "DrawingRect.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Models\\DrawingRect.cs",
               "RelativeDocumentMoniker": "Models\\DrawingRect.cs",
@@ -450,7 +506,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 23,
+              "DocumentIndex": 26,
               "Title": "SettingsModel.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Models\\SettingsModel.cs",
               "RelativeDocumentMoniker": "Models\\SettingsModel.cs",
@@ -462,19 +518,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 22,
-              "Title": "ClipDiscordApp.csproj",
-              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\ClipDiscordApp.csproj",
-              "RelativeDocumentMoniker": "ClipDiscordApp.csproj",
-              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\ClipDiscordApp.csproj",
-              "RelativeToolTip": "ClipDiscordApp.csproj",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAqwCMAAAAAAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
-              "WhenOpened": "2025-11-06T03:02:24.888Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 24,
+              "DocumentIndex": 27,
               "Title": "OcrResult.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Models\\OcrResult.cs",
               "RelativeDocumentMoniker": "Models\\OcrResult.cs",
@@ -486,7 +530,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 28,
+              "DocumentIndex": 31,
               "Title": "NotificationQueue.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\NotificationQueue.cs",
               "RelativeDocumentMoniker": "Services\\NotificationQueue.cs",
@@ -498,7 +542,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 26,
+              "DocumentIndex": 29,
               "Title": "ExtractRule.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Models\\ExtractRule.cs",
               "RelativeDocumentMoniker": "Models\\ExtractRule.cs",
@@ -510,7 +554,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 29,
+              "DocumentIndex": 32,
               "Title": "RuleSettingsWindow.xaml",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Views\\RuleSettingsWindow.xaml",
               "RelativeDocumentMoniker": "Views\\RuleSettingsWindow.xaml",
@@ -521,7 +565,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 30,
+              "DocumentIndex": 33,
               "Title": "RuleStore.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Services\\RuleStore.cs",
               "RelativeDocumentMoniker": "Services\\RuleStore.cs",
@@ -533,7 +577,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 31,
+              "DocumentIndex": 34,
               "Title": "CaptureResult.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Models\\CaptureResult.cs",
               "RelativeDocumentMoniker": "Models\\CaptureResult.cs",
@@ -545,7 +589,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 33,
+              "DocumentIndex": 35,
               "Title": "SettingsStore.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Utils\\SettingsStore.cs",
               "RelativeDocumentMoniker": "Utils\\SettingsStore.cs",
@@ -557,31 +601,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 34,
-              "Title": "AppSettings.cs",
-              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Models\\AppSettings.cs",
-              "RelativeDocumentMoniker": "Models\\AppSettings.cs",
-              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Models\\AppSettings.cs",
-              "RelativeToolTip": "Models\\AppSettings.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAABAAAAABAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-06T02:54:07.202Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 32,
-              "Title": "App.xaml.cs",
-              "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\App.xaml.cs",
-              "RelativeDocumentMoniker": "App.xaml.cs",
-              "ToolTip": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\App.xaml.cs",
-              "RelativeToolTip": "App.xaml.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAABYAAAABAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-06T03:58:52.156Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 35,
+              "DocumentIndex": 36,
               "Title": "WatchRegion.cs",
               "DocumentMoniker": "C:\\Users\\glaym\\source\\repos\\ClipDiscordApp\\Models\\WatchRegion.cs",
               "RelativeDocumentMoniker": "Models\\WatchRegion.cs",
