@@ -2,6 +2,8 @@
 using ClipDiscordApp.Parsers;
 using ClipDiscordApp.Services;
 using ClipDiscordApp.Utils;
+using OpenCvSharp;
+using OpenCvSharp.Extensions;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -17,7 +19,7 @@ using YourNamespace.Ocr;
 
 namespace ClipDiscordApp
 {
-    public partial class MainWindow : Window
+    public partial class MainWindow : System.Windows.Window
     {
         // ---------- Fields ----------
         private readonly TesseractEngine _tesseractEngine;
@@ -31,7 +33,6 @@ namespace ClipDiscordApp
         private MonitorService _monitorService;
         private CancellationTokenSource _monitorCts;
         private string _logsDir;
-        // フィールド（MainWindow クラス内に追加してください）
         private string? _lastPreviewHash = null;
 
         // Selection UI helpers
@@ -60,7 +61,6 @@ namespace ClipDiscordApp
             // Initialize Tesseract engine (use "jpn" if your tessdata contains jpn.traineddata)
             try
             {
-                // 例: _tesseractEngine = new TesseractEngine(tessDataDir, "eng+jpn", EngineMode.Default)
                 var tessDataDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tessdata");
                 _tesseractEngine = new TesseractEngine(tessDataDir, "eng+jpn", EngineMode.Default);
                 _tesseractEngine.SetVariable("tessedit_char_whitelist", "0123456789-:ABCDEFGHIJKLMNOPQRSTUVWXYZ ");
@@ -74,278 +74,291 @@ namespace ClipDiscordApp
         }
 
         // ---------- Start / Stop Monitoring ----------
-        // StartMonitoringAsync の全文（差分検出と前処理向上を含む）
         public async Task StartMonitoringAsync(System.Drawing.Rectangle initialRegion, CancellationToken cancellationToken)
         {
             var rules = LoadRules();
 
-            // 新: ClipDiscordApp.Utils のプリセットを使う
-            var prepParams = OcrPreprocessorPresets.Conservative;
+            // Choose a fixed preprocessing preset for template creation and matching
+            var prepParams = OcrPreprocessorPresets.ReadableText;
 
             Directory.CreateDirectory(_logDir);
 
-            // 閾値（必要に応じて調整）
             const double TEMPLATE_SCORE_THRESHOLD = 0.80;
             const double NOTIFY_THRESHOLD = 0.75;
             const double LOG_ONLY_THRESHOLD = 0.55;
 
-            while (!cancellationToken.IsCancellationRequested)
+            // ローカルヘルパ: candidate から Token/Label を安全に取り出す
+            static string ReadCandidateToken(object cand)
             {
-                try
+                if (cand == null) return string.Empty;
+                var t = cand.GetType();
+                string[] tokenNames = new[] { "Token", "token", "TokenValue", "Text", "Value" };
+                foreach (var n in tokenNames)
                 {
-                    using var frame = CaptureFrameBitmap();
-                    if (frame == null)
-                    {
-                        await Task.Delay(200, cancellationToken);
-                        continue;
-                    }
+                    var p = t.GetProperty(n);
+                    if (p != null && p.PropertyType == typeof(string)) return (string)(p.GetValue(cand) ?? string.Empty);
+                    var f = t.GetField(n);
+                    if (f != null && f.FieldType == typeof(string)) return (string)(f.GetValue(cand) ?? string.Empty);
+                }
+                var p2 = t.GetProperties().FirstOrDefault(pp => pp.PropertyType == typeof(string));
+                if (p2 != null) return (string)(p2.GetValue(cand) ?? string.Empty);
+                return string.Empty;
+            }
 
-                    using var roi = CropToRegion(frame, initialRegion);
-                    using var prepped = OcrPreprocessor.Preprocess(roi, prepParams);
+            static string ReadCandidateLabel(object cand)
+            {
+                if (cand == null) return string.Empty;
+                var t = cand.GetType();
+                string[] labelNames = new[] { "Label", "label", "Target", "Kind" };
+                foreach (var n in labelNames)
+                {
+                    var p = t.GetProperty(n);
+                    if (p != null && p.PropertyType == typeof(string)) return (string)(p.GetValue(cand) ?? string.Empty);
+                    var f = t.GetField(n);
+                    if (f != null && f.FieldType == typeof(string)) return (string)(f.GetValue(cand) ?? string.Empty);
+                }
+                return string.Empty;
+            }
 
-                    // デバッグ保存（任意）
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
                     try
                     {
-                        var fname = Path.Combine(_logDir, $"pre_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.png");
-                        prepped.Save(fname);
-                        Debug.WriteLine($"[OCR] Preprocessed image saved: {fname}");
-                    }
-                    catch (Exception ex) { Debug.WriteLine($"[OCR] Save prepped failed: {ex.Message}"); }
-
-                    // ----- 1) テンプレートマッチング（優先） -----
-                    // TemplateMatcher.Check は (found:bool, label:string, score:double) を返す想定
-                    var templateResult = TemplateMatcher.Check(prepped); // implement elsewhere
-                    if (templateResult.found)
-                    {
-                        Debug.WriteLine($"[Template] found {templateResult.label} score={templateResult.score}");
-                        if (templateResult.score >= TEMPLATE_SCORE_THRESHOLD)
+                        using var frame = CaptureFrameBitmap();
+                        if (frame == null)
                         {
-                            var toParse = templateResult.label; // "BUY" or "SELL"
-                            var matches = OcrParser.ParseByRules(toParse, rules);
-                            if (matches != null && matches.Any())
-                            {
-                                foreach (var m in matches)
-                                {
-                                    var key = !string.IsNullOrEmpty(m.RuleId) ? m.RuleId : m.RuleName;
-                                    if (string.IsNullOrEmpty(key)) key = Guid.NewGuid().ToString();
-
-                                    if (_lastNotified.TryGetValue(key, out var last) && (DateTime.UtcNow - last) < _notifyCooldown)
-                                    {
-                                        Debug.WriteLine($"[OCR] Skip notify for {key} (cooldown)");
-                                        continue;
-                                    }
-
-                                    _lastNotified[key] = DateTime.UtcNow;
-                                    _ = Task.Run(() => HandleMatchAsync(m));
-                                    Debug.WriteLine($"[OCR] Match(from template): rule={m.RuleName} matches=[{string.Join(',', m.Matches)}]");
-                                }
-                            }
-
                             await Task.Delay(200, cancellationToken);
-                            continue; // 次ループへ
-                        }
-                        else
-                        {
-                            Debug.WriteLine($"[Template] low score {templateResult.score}, fall back to OCR");
-                        }
-                    }
-
-                    // ----- 2) フォールバック: OCR(binary と gray の両方) -----
-                    string textBin = string.Empty;
-                    string textGray = string.Empty;
-
-                    try
-                    {
-                        var up = (textBin ?? string.Empty).ToUpperInvariant();
-                        var m = System.Text.RegularExpressions.Regex.Match(up, @"\b(BUY|SELL)\b");
-                        if (m.Success)
-                        {
-                            var label = m.Groups[1].Value; // "BUY" or "SELL"
-                            Debug.WriteLine($"[OcrHelpers] Regex immediate match: {label} from '{up}'");
-
-                            // ルールパースしてハンドラへ渡す（TemplateMatcher と同等の早期処理）
-                            var matches = OcrParser.ParseByRules(label, rules);
-                            if (matches != null && matches.Any())
-                            {
-                                foreach (var mm in matches)
-                                {
-                                    var key = !string.IsNullOrEmpty(mm.RuleId) ? mm.RuleId : mm.RuleName;
-                                    if (string.IsNullOrEmpty(key)) key = Guid.NewGuid().ToString();
-
-                                    if (_lastNotified.TryGetValue(key, out DateTime last) && (DateTime.UtcNow - last) < _notifyCooldown)
-                                    {
-                                        Debug.WriteLine($"[OCR] Skip notify for {key} (cooldown)");
-                                        continue;
-                                    }
-
-                                    _lastNotified[key] = DateTime.UtcNow;
-                                    _ = HandleMatchAsync(mm); // 非同期で実行（既存ハンドラが Task を返す想定）
-                                    Debug.WriteLine($"[OCR] Match(from regex): rule={mm.RuleName} matches=[{string.Join(',', mm.Matches)}]");
-                                }
-                            }
-
-                            // 正規表現で判定できたので以降の OCR 正規化／スコア処理はスキップして次ループへ
                             continue;
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[OcrHelpers] Regex immediate match processing failed: {ex}");
-                    }
 
+                        using var roi = CropToRegion(frame, initialRegion);
+                        using var prepped = OcrPreprocessor.Preprocess(roi, prepParams);
 
-                    try
-                    {
-                        // Gray bitmap作成用ヘルパ。実装がない場合は prepped を直接使うか
-                        using var grayBmp = OcrPreprocessor.GetGrayBitmap(prepped); // implement if needed
-                        using var pixGray = PixConverter.ToPix(grayBmp);
-                        textGray = OcrHelpers.DoOcrWithRetries(_tesseractEngine, pixGray) ?? string.Empty;
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[OCR] gray OCR failed: {ex.Message}");
-                    }
-
-                    Debug.WriteLine($"[OCR] Raw bin len={textBin.Length} bin:'{(textBin.Length > 200 ? textBin.Substring(0, 200) + "..." : textBin)}'");
-                    Debug.WriteLine($"[OCR] Raw gray len={textGray.Length} gray:'{(textGray.Length > 200 ? textGray.Substring(0, 200) + "..." : textGray)}'");
-
-                    // ----- 3) 候補から BUY/SELL を両方評価して最良ラベルを選ぶ -----
-                    // NormalizeAndDetectLabels は rawCandidates から複数 LabelCandidate を返す想定
-                    // LabelCandidate: { string Text; string Label; double Confidence; string Source; }
-                    var rawCandidates = new List<(string text, string source)>();
-                    rawCandidates.Add((textBin, "binary"));
-                    rawCandidates.Add((textGray, "gray"));
-
-                    var labelCandidates = new List<LabelCandidate>();
-                    foreach (var (txt, src) in rawCandidates)
-                    {
-                        if (string.IsNullOrWhiteSpace(txt)) continue;
+                        // Debug save preprocessed
                         try
                         {
-                            var list = OcrHelpers.NormalizeAndDetectLabels(new[] { txt }, src); // implement to return List<LabelCandidate>
-                            if (list != null) labelCandidates.AddRange(list);
+                            var fname = Path.Combine(_logDir, $"pre_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.png");
+                            prepped.Save(fname);
+                            Debug.WriteLine($"[OCR] Preprocessed image saved: {fname}");
+                        }
+                        catch (Exception ex) { Debug.WriteLine($"[OCR] Save prepped failed: {ex.Message}"); }
+
+                        // ---------------- 1) Template match (priority) ----------------
+                        try
+                        {
+                            TemplateMatcher.AcceptThreshold = TEMPLATE_SCORE_THRESHOLD;
+
+                            int matchTimeoutSeconds = 4;
+                            using var matchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                            matchCts.CancelAfter(TimeSpan.FromSeconds(matchTimeoutSeconds));
+
+                            var frameTag = DateTime.UtcNow.ToString("HHmmss_fff");
+                            Debug.WriteLine($"[Template] Start match frame={frameTag} timeout={matchTimeoutSeconds}s");
+
+                            MatchResult templateResult;
+                            try
+                            {
+                                templateResult = await TemplateMatcher.CheckAsync(prepped, matchCts.Token);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                Debug.WriteLine($"[Template] matching canceled for frame={frameTag} (timeout or external). external={cancellationToken.IsCancellationRequested} matchCts={matchCts.IsCancellationRequested}");
+                                await Task.Delay(100, CancellationToken.None);
+                                continue;
+                            }
+
+                            if (templateResult != null && templateResult.Found)
+                            {
+                                Debug.WriteLine($"[Template] found {templateResult.Label} score={templateResult.BestScore:F3} tried={templateResult.TriedCandidates} elapsedMs={templateResult.ElapsedMs}");
+                                var toParse = templateResult.Label.ToUpperInvariant();
+                                var matches = OcrParser.ParseByRules(toParse, rules);
+                                if (matches != null && matches.Any())
+                                {
+                                    foreach (var m in matches)
+                                    {
+                                        var key = !string.IsNullOrEmpty(m.RuleId) ? m.RuleId : m.RuleName;
+                                        if (string.IsNullOrEmpty(key)) key = Guid.NewGuid().ToString();
+
+                                        if (_lastNotified.TryGetValue(key, out var last) && (DateTime.UtcNow - last) < _notifyCooldown)
+                                        {
+                                            Debug.WriteLine($"[OCR] Skip notify for {key} (cooldown)");
+                                            continue;
+                                        }
+
+                                        _lastNotified[key] = DateTime.UtcNow;
+                                        _ = Task.Run(() => HandleMatchAsync(m));
+                                        Debug.WriteLine($"[OCR] Match(from template): rule={m.RuleName} matches=[{string.Join(',', m.Matches)}]");
+                                    }
+                                }
+
+                                await Task.Delay(200, cancellationToken);
+                                continue; // skip OCR for this frame
+                            }
+                            else
+                            {
+                                if (templateResult != null)
+                                    Debug.WriteLine($"[Template] no confident template match (best {templateResult.Label} score={templateResult.BestScore:F3}), fallback to OCR");
+                                else
+                                    Debug.WriteLine($"[Template] templateResult null for frame={frameTag}, fallback to OCR");
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            Debug.WriteLine("[Template] OperationCanceledException in template handling - continue monitoring");
+                            await Task.Delay(100, CancellationToken.None);
+                            continue;
                         }
                         catch (Exception ex)
                         {
-                            Debug.WriteLine($"[OcrHelpers] NormalizeAndDetectLabels failed for {src}: {ex.Message}");
+                            Debug.WriteLine($"[Template] matching error (non-fatal) {ex}");
+                            await Task.Delay(100, cancellationToken);
+                            continue;
                         }
-                    }
+                        // ---------------- end template matching ----------------
 
-                    // best per label
-                    var bestSell = labelCandidates.Where(c => c.Label == "SELL").OrderByDescending(c => c.Confidence).FirstOrDefault();
-                    var bestBuy = labelCandidates.Where(c => c.Label == "BUY").OrderByDescending(c => c.Confidence).FirstOrDefault();
-
-                    var chosen = (bestSell?.Confidence ?? 0) >= (bestBuy?.Confidence ?? 0) ? bestSell : bestBuy;
-
-                    Debug.WriteLine($"[OCR] bestSell={bestSell?.Text}:{bestSell?.Confidence} bestBuy={bestBuy?.Text}:{bestBuy?.Confidence} chosen={chosen?.Label}:{chosen?.Text}:{chosen?.Confidence}");
-
-                    // ログのみ or 通知判定
-                    if (chosen != null && chosen.Confidence >= NOTIFY_THRESHOLD)
-                    {
-                        var toParse = chosen.Text;
-                        var matches = OcrParser.ParseByRules(toParse, rules);
-
-                        if (matches != null && matches.Any())
-                        {
-                            foreach (var m in matches)
-                            {
-                                var key = !string.IsNullOrEmpty(m.RuleId) ? m.RuleId : m.RuleName;
-                                if (string.IsNullOrEmpty(key)) key = Guid.NewGuid().ToString();
-
-                                if (_lastNotified.TryGetValue(key, out var last) && (DateTime.UtcNow - last) < _notifyCooldown)
-                                {
-                                    Debug.WriteLine($"[OCR] Skip notify for {key} (cooldown)");
-                                    continue;
-                                }
-
-                                _lastNotified[key] = DateTime.UtcNow;
-                                _ = Task.Run(() => HandleMatchAsync(m));
-                                Debug.WriteLine($"[OCR] Match: rule={m.RuleName} matches=[{string.Join(',', m.Matches)}]");
-                            }
-                        }
-                    }
-                    else if (chosen != null && chosen.Confidence >= LOG_ONLY_THRESHOLD)
-                    {
-                        Debug.WriteLine($"[OCR] Low-confidence candidate (log only): {chosen.Label} '{chosen.Text}' conf={chosen.Confidence}");
-                    }
-                    else
-                    {
-                        Debug.WriteLine("[OCR] No confident candidate found");
-                    }
-
-                    // ----- 4) プレビュー更新（既存ロジック） -----
-                    try
-                    {
-                        Bitmap bmpClone = null;
+                        // ---------------- 2) OCR fallback using OcrTextUtils & OcrHelpers ----------------
                         try
                         {
-                            bmpClone = (Bitmap)roi.Clone();
-                            var hash = ComputeSimpleHash(bmpClone);
-                            if (hash != _lastPreviewHash)
+                            // Get shared engine and convert bitmap to Pix
+                            var engine = OcrTextUtils.GetEngine();
+                            Pix pix = null;
+                            try
                             {
-                                _lastPreviewHash = hash;
+                                pix = OcrTextUtils.BitmapToPix(prepped);
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine($"[OCR] BitmapToPix failed: {ex}");
+                                pix?.Dispose();
+                                await Task.Delay(100, cancellationToken);
+                                continue;
+                            }
 
-                                BitmapSource bmpSource = null;
-                                try
-                                {
-                                    bmpSource = BitmapToBitmapSource(bmpClone);
-                                    if (bmpSource != null && bmpSource.CanFreeze) bmpSource.Freeze();
-                                }
-                                catch (Exception ex)
-                                {
-                                    Debug.WriteLine($"[Preview] BitmapToBitmapSource failed: {ex.Message}");
-                                    bmpSource = null;
-                                }
+                            string ocrRaw;
+                            try
+                            {
+                                ocrRaw = OcrHelpers.DoOcrWithRetries(engine, pix);
+                            }
+                            finally
+                            {
+                                pix.Dispose();
+                            }
 
-                                if (bmpSource != null)
+                            if (string.IsNullOrWhiteSpace(ocrRaw))
+                            {
+                                Debug.WriteLine("[OCR] DoOcrWithRetries returned empty");
+                                await Task.Delay(100, cancellationToken);
+                                continue;
+                            }
+
+                            Debug.WriteLine($"[OCR] Recognized raw text: {ocrRaw}");
+
+                            var candidates = OcrHelpers.NormalizeAndDetectLabels(new[] { ocrRaw }, "ocr");
+                            if (candidates == null || candidates.Count == 0)
+                            {
+                                Debug.WriteLine("[OCR] No label candidates from NormalizeAndDetectLabels");
+                                await Task.Delay(100, cancellationToken);
+                                continue;
+                            }
+
+                            // choose best candidate per label using OcrTextUtils.GetCandidateScore
+                            var bestByLabel = candidates
+                                .GroupBy(c => ReadCandidateLabel(c) ?? "")
+                                .Select(g =>
                                 {
-                                    Dispatcher.BeginInvoke(new Action(() =>
+                                    var best = g.OrderByDescending(x => OcrTextUtils.GetCandidateScore(x)).First();
+                                    return new { Candidate = best, Score = OcrTextUtils.GetCandidateScore(best) };
+                                })
+                                .OrderByDescending(x => x.Score)
+                                .Select(x => x.Candidate)
+                                .ToList();
+
+                            // log top candidates safely
+                            foreach (var c in bestByLabel)
+                            {
+                                var tokenStr = ReadCandidateToken(c);
+                                var labelStr = ReadCandidateLabel(c);
+                                var scoreVal = OcrTextUtils.GetCandidateScore(c);
+                                Debug.WriteLine($"[OCR] Candidate label={labelStr} token='{tokenStr}' score={scoreVal:F3} source=ocr");
+                            }
+
+                            // decide notify based on thresholds
+                            object topCand = bestByLabel.FirstOrDefault();
+                            double topScore = topCand != null ? OcrTextUtils.GetCandidateScore(topCand) : 0.0;
+                            string topToken = topCand != null ? ReadCandidateToken(topCand) : string.Empty;
+
+                            if (topScore >= NOTIFY_THRESHOLD && !string.IsNullOrWhiteSpace(topToken))
+                            {
+                                var toParse = topToken.ToUpperInvariant();
+                                var matches = OcrParser.ParseByRules(toParse, rules);
+                                if (matches != null && matches.Any())
+                                {
+                                    foreach (var m in matches)
                                     {
-                                        try
+                                        var key = !string.IsNullOrEmpty(m.RuleId) ? m.RuleId : m.RuleName;
+                                        if (string.IsNullOrEmpty(key)) key = Guid.NewGuid().ToString();
+
+                                        if (_lastNotified.TryGetValue(key, out var last) && (DateTime.UtcNow - last) < _notifyCooldown)
                                         {
-                                            CapturedImage.Source = bmpSource;
+                                            Debug.WriteLine($"[OCR] Skip notify for {key} (cooldown)");
+                                            continue;
                                         }
-                                        catch (Exception ex)
-                                        {
-                                            Debug.WriteLine($"[Preview] Update failed in Dispatcher: {ex.Message}");
-                                        }
-                                    }));
+
+                                        _lastNotified[key] = DateTime.UtcNow;
+                                        _ = Task.Run(() => HandleMatchAsync(m));
+                                        Debug.WriteLine($"[OCR] Match(from OCR): rule={m.RuleName} matches=[{string.Join(',', m.Matches)}]");
+                                    }
                                 }
                             }
+                            else
+                            {
+                                Debug.WriteLine($"[OCR] Low-confidence top candidate (score={topScore:F3}) - log only");
+                            }
+
+                            await Task.Delay(200, cancellationToken);
                         }
-                        finally
+                        catch (OperationCanceledException)
                         {
-                            try { bmpClone?.Dispose(); } catch { }
+                            Debug.WriteLine("[OCR] OCR operation canceled for this frame - continue monitoring");
+                            await Task.Delay(100, CancellationToken.None);
+                            continue;
                         }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"[OCR] OCR processing failed (non-fatal): {ex}");
+                            await Task.Delay(100, cancellationToken);
+                            continue;
+                        }
+                        // ---------------- end OCR fallback ----------------
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        Debug.WriteLine("[StartMonitoring] External cancellation requested - stopping monitoring.");
+                        break;
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"[Preview] Error computing/updating preview: {ex}");
+                        Debug.WriteLine($"[StartMonitoring] Non-fatal exception in loop: {ex}");
+                        await Task.Delay(200, cancellationToken);
+                        continue;
                     }
-
-                    await Task.Delay(200, cancellationToken);
-                }
-                catch (TaskCanceledException tex)
-                {
-                    Debug.WriteLine($"[StartMonitoring] TaskCanceledException: {tex.Message}\n{tex.StackTrace}");
-                    break;
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[StartMonitoring] Error: {ex}");
-                    await Task.Delay(500, cancellationToken);
-                }
+                } // end while
+            }
+            catch (OperationCanceledException)
+            {
+                Debug.WriteLine("[StartMonitoring] Monitoring canceled (top-level).");
+            }
+            finally
+            {
+                Debug.WriteLine("[StartMonitoring] Exiting StartMonitoringAsync.");
             }
         }
 
         // シンプルな差分ハッシュ（高速で概ねの変化検出用）
         private string ComputeSimpleHash(Bitmap bmp)
         {
-            // サンプリング間隔は画像サイズに応じて調整（高速化のため一部ピクセルを使う）
             int sampleStepsX = Math.Max(1, bmp.Width / 32);
             int sampleStepsY = Math.Max(1, bmp.Height / 32);
             unchecked
@@ -445,16 +458,12 @@ namespace ClipDiscordApp
         // ---------- XAML Event Handlers (UI binding) ----------
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            // ログディレクトリを決める
             _logsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
             Directory.CreateDirectory(_logsDir);
 
-            // NOTE: _tesseractEngine はコンストラクタで初期化済み（再代入しない）
-            // TemplateMatcher 初期化: Templates フォルダに BUY/SELL を配置しておく
             var templatesPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Templates");
             TemplateMatcher.Initialize(templatesPath);
 
-            // MonitorService の生成と Start は BtnStartMonitoring_Click 側で行うためここでは行わない
             BtnStartMonitoring.IsEnabled = true;
             BtnStopMonitoring.IsEnabled = false;
             StatusText.Text = "Ready";
@@ -470,14 +479,12 @@ namespace ClipDiscordApp
                 }
                 Debug.WriteLine($"[Startup] DPI scaleX={dpiScaleX:F2} scaleY={dpiScaleY:F2}");
 
-                // _selectedRegion が初期化済みであればログする（多くは未選択なので幅高さ=0）
                 Debug.WriteLine($"[Startup] initial _selectedRegion: {_selectedRegion}");
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[Startup] DPI debug failed: {ex.Message}");
             }
-
         }
 
         private void BtnStopMonitoring_Click(object sender, RoutedEventArgs e)
@@ -525,9 +532,7 @@ namespace ClipDiscordApp
                 }
 
                 var now = DateTime.Now;
-                var contentText = $"{now:yyyy-MM-dd HH:mm:ss} SELL" +
-                    $"";
-
+                var contentText = $"{now:yyyy-MM-dd HH:mm:ss} SELL";
                 var payload = new { content = contentText };
                 var json = JsonSerializer.Serialize(payload);
                 using var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
@@ -711,7 +716,6 @@ namespace ClipDiscordApp
 
         private void BtnStartMonitoring_Click(object sender, RoutedEventArgs e)
         {
-            // 常に選択ダイアログを表示して選択済み領域を取得する
             var selector = new RegionSelectorWindow { Owner = this };
             var dlg = selector.ShowDialog();
             if (dlg != true)
@@ -719,43 +723,31 @@ namespace ClipDiscordApp
                 StatusText.Text = "Monitoring cancelled (no region selected)";
                 return;
             }
-            // selector.SelectedRegion は ClipDiscordApp.Models.DrawingRect 型
+
             var d = selector.SelectedRegion;
             var selRect = new System.Windows.Rect(d.X, d.Y, d.Width, d.Height);
             _selectedRegion = ConvertImageRectToBitmapRect(selRect, CapturedImage);
             DrawSelectionOnOverlay(_selectedRegion);
 
-            // UI 更新
             BtnStartMonitoring.IsEnabled = false;
             BtnStopMonitoring.IsEnabled = true;
             StatusText.Text = "Monitoring...";
 
-            // 既に実行中なら古い CTS をキャンセルしておく
             try { _monitoringCts?.Cancel(); } catch { }
 
-            // 新規に CTS を作成（既存フィールド名に合わせる）
             _monitoringCts = new CancellationTokenSource();
 
-            // MonitorService が未生成ならここで生成する（毎回新しく作ってもOK）
             if (_monitorService == null)
             {
                 _monitorService = new MonitorService(
                     _logsDir,
                     _tesseractEngine,
-                    // captureFrame
                     () => CaptureFrameBitmap(),
-                    // cropToRegion
                     (bmp, rect) => CropToRegion(bmp, rect),
-                    // computeHash
                     (bmp) => ComputeSimpleHash(bmp),
-                    // bmpToSource
                     (bmp) => BitmapToBitmapSource(bmp),
-                    // handleMatchAsync: MonitorService expects Func<object, Task> (object-based).
-                    // Cast object -> ExtractMatch inside this lambda before calling your existing handler.
                     async (object m) => { await HandleMatchAsync((ExtractMatch)m); },
-                    // loadRules
                     () => LoadRules(),
-                    // setPreviewAction: UI スレッド経由で CapturedImage.Source にセット
                     (bmpSource) =>
                     {
                         Dispatcher.BeginInvoke(new Action(() =>
@@ -765,7 +757,6 @@ namespace ClipDiscordApp
                     });
             }
 
-            // StartMonitoring をバックグラウンドで開始
             _ = Task.Run(async () =>
             {
                 try
@@ -774,7 +765,6 @@ namespace ClipDiscordApp
                 }
                 catch (OperationCanceledException)
                 {
-                    // 正常停止
                 }
                 catch (Exception ex)
                 {
@@ -783,7 +773,6 @@ namespace ClipDiscordApp
                 }
                 finally
                 {
-                    // UI を元に戻す
                     Dispatcher.Invoke(() =>
                     {
                         BtnStartMonitoring.IsEnabled = true;
@@ -795,21 +784,16 @@ namespace ClipDiscordApp
         }
 
         // 追加メソッド：Image上の選択矩形を元画像（BitmapSource）ピクセル座標に変換して返す
-        // selRectInImage: RegionSelectorWindow.SelectedRegion が System.Windows.Rect を返す想定
-        // imageControl: プレビュー表示に使っている Image コントロール（例: CapturedImage）
         private System.Drawing.Rectangle ConvertImageRectToBitmapRect(System.Windows.Rect selRectInImage, System.Windows.Controls.Image imageControl)
         {
             if (imageControl?.Source is System.Windows.Media.Imaging.BitmapSource bmp)
             {
-                // Image コントロールの表示サイズ（DIP: WPF単位）
                 double displayW = imageControl.ActualWidth;
                 double displayH = imageControl.ActualHeight;
 
-                // Bitmap のピクセルサイズ
                 double sourceW = bmp.PixelWidth;
                 double sourceH = bmp.PixelHeight;
 
-                // DPI / スケール補正
                 var src = PresentationSource.FromVisual(this);
                 double dpiScaleX = 1.0, dpiScaleY = 1.0;
                 if (src?.CompositionTarget != null)
@@ -818,11 +802,9 @@ namespace ClipDiscordApp
                     dpiScaleY = src.CompositionTarget.TransformToDevice.M22;
                 }
 
-                // 表示ピクセルに換算（DIP -> physical pixels）
                 double displayPxW = displayW * dpiScaleX;
                 double displayPxH = displayH * dpiScaleY;
 
-                // 元画像ピクセルにマッピングするスケール（displayPx -> source pixels）
                 double scaleX = sourceW / Math.Max(1.0, displayPxW);
                 double scaleY = sourceH / Math.Max(1.0, displayPxH);
 
@@ -839,7 +821,6 @@ namespace ClipDiscordApp
                 );
             }
 
-            // フォールバック（SelectedRegion がすでにスクリーン/ピクセル座標の場合）
             return new System.Drawing.Rectangle(
                 (int)Math.Max(0, selRectInImage.X),
                 (int)Math.Max(0, selRectInImage.Y),

@@ -3,17 +3,18 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.IO;
+using System.Diagnostics;
+using System.Drawing;
+using System.Reflection;
+using Tesseract; // 必須パッケージ参照
 
 namespace ClipDiscordApp.Utils
 {
-    public class OcrTextUtils
+    public static class OcrTextUtils
     {
-        // 既存メソッド群...
-
-        // 統一された閾値プロパティ（実行時に変更可能）
+        // existing behaviour
         public static int FuzzyThreshold { get; set; } = 2;
-
-        // ラッパー（将来ロジックを追加したい場合はここに追加）
         public static int GetFuzzyThreshold() => FuzzyThreshold;
 
         public static string NormalizeForComparison(string s)
@@ -21,7 +22,6 @@ namespace ClipDiscordApp.Utils
             if (string.IsNullOrEmpty(s)) return string.Empty;
             s = s.ToUpperInvariant();
 
-            // 基本の不要文字除去（コロンやハイフンは残す）
             var sb = new System.Text.StringBuilder();
             foreach (var ch in s)
             {
@@ -29,7 +29,6 @@ namespace ClipDiscordApp.Utils
             }
             s = sb.ToString();
 
-            // よくある置換（順序は重要）
             s = s.Replace('0', 'O');   // 0 -> O
             s = s.Replace('1', 'I');   // 1 -> I
             s = s.Replace('5', 'S');   // 5 -> S
@@ -38,8 +37,7 @@ namespace ClipDiscordApp.Utils
             s = s.Replace("::", ":");  // 重複コロン修正
             s = s.Replace(" ", "");    // 比較用は空白除去
 
-            // ---------- TEST ONLY: common OCR misrecognitions mapping ----------
-            // テストが終わったらこのブロックは必ず削除してください
+            // TEST mappings (keep if useful)
             s = s.Replace("SML", "SELL");
             s = s.Replace("SMI", "SELL");
             s = s.Replace("SEI", "SELL");
@@ -51,7 +49,6 @@ namespace ClipDiscordApp.Utils
         public static string NormalizeForOutput(string s)
         {
             if (string.IsNullOrWhiteSpace(s)) return string.Empty;
-            // 最小限のトリムで表示向けに
             return s.Trim();
         }
 
@@ -79,6 +76,141 @@ namespace ClipDiscordApp.Utils
                 }
             }
             return d[n, m];
+        }
+
+        // ----------------- ここから追加ユーティリティ -----------------
+
+        // Shared TesseractEngine
+        private static TesseractEngine _sharedEngine;
+        private static readonly object _engineLock = new();
+
+        // 既存の GetTesseractEngine 呼び出しを置き換えるための公開メソッド
+        public static TesseractEngine GetEngine(string tessdataRelativePath = "tessdata", string lang = "eng")
+        {
+            lock (_engineLock)
+            {
+                if (_sharedEngine != null) return _sharedEngine;
+
+                var exeDir = AppDomain.CurrentDomain.BaseDirectory;
+                var tessDataPath = Path.Combine(exeDir, tessdataRelativePath);
+                if (!Directory.Exists(tessDataPath))
+                {
+                    Debug.WriteLine($"[OcrTextUtils] tessdata not found at {tessDataPath}");
+                    throw new DirectoryNotFoundException($"tessdata not found: {tessDataPath}");
+                }
+
+                try
+                {
+                    _sharedEngine = new TesseractEngine(tessDataPath, lang, EngineMode.Default);
+                    Debug.WriteLine("[OcrTextUtils] TesseractEngine created");
+                    return _sharedEngine;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[OcrTextUtils] Failed to create TesseractEngine: {ex}");
+                    throw;
+                }
+            }
+        }
+
+        public static void DisposeEngine()
+        {
+            lock (_engineLock)
+            {
+                try { _sharedEngine?.Dispose(); } catch { }
+                _sharedEngine = null;
+            }
+        }
+
+        // Bitmap -> Pix 変換。呼び出し側が Dispose を行うこと（using を推奨）
+        public static Pix BitmapToPix(Bitmap bmp)
+        {
+            if (bmp == null) return null;
+
+            // Try to use PixConverter if available
+            try
+            {
+                var convType = Type.GetType("Tesseract.PixConverter, Tesseract");
+                if (convType != null)
+                {
+                    var toPix = convType.GetMethod("ToPix", new Type[] { typeof(Bitmap) });
+                    if (toPix != null)
+                    {
+                        return (Pix)toPix.Invoke(null, new object[] { bmp });
+                    }
+                }
+            }
+            catch
+            {
+                // ignore and fallback
+            }
+
+            // Fallback: attempt direct conversion (best-effort)
+            try
+            {
+                using var bmp32 = new Bitmap(bmp.Width, bmp.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                using (var g = Graphics.FromImage(bmp32)) g.DrawImage(bmp, 0, 0, bmp.Width, bmp.Height);
+
+                var data = bmp32.LockBits(new Rectangle(0, 0, bmp32.Width, bmp32.Height),
+                    System.Drawing.Imaging.ImageLockMode.ReadOnly, bmp32.PixelFormat);
+                try
+                {
+                    int stride = Math.Abs(data.Stride);
+                    int size = stride * bmp32.Height;
+                    var bytes = new byte[size];
+                    System.Runtime.InteropServices.Marshal.Copy(data.Scan0, bytes, 0, size);
+
+                    var pixType = typeof(Pix);
+                    var loadMethod = pixType.GetMethod("LoadFromMemory", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                    if (loadMethod != null)
+                    {
+                        var pix = (Pix)loadMethod.Invoke(null, new object[] { bytes, bytes.Length });
+                        if (pix != null) return pix;
+                    }
+                }
+                finally
+                {
+                    bmp32.UnlockBits(data);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OcrTextUtils] BitmapToPix fallback failed: {ex.Message}");
+            }
+
+            throw new NotSupportedException("Bitmap -> Pix conversion not supported in this environment. Add Pix converter.");
+        }
+
+        // LabelCandidate のスコアを安全に取り出す（reflection）
+        public static double GetCandidateScore(object candidate)
+        {
+            if (candidate == null) return 0.0;
+            var t = candidate.GetType();
+            string[] names = new[] { "Score", "score", "Confidence", "confidence", "Value", "value" };
+            foreach (var n in names)
+            {
+                var p = t.GetProperty(n);
+                if (p != null && IsNumericType(p.PropertyType))
+                {
+                    var val = p.GetValue(candidate);
+                    return Convert.ToDouble(val);
+                }
+                var f = t.GetField(n);
+                if (f != null && IsNumericType(f.FieldType))
+                {
+                    var val = f.GetValue(candidate);
+                    return Convert.ToDouble(val);
+                }
+            }
+            var numericProp = t.GetProperties().FirstOrDefault(pp => IsNumericType(pp.PropertyType));
+            if (numericProp != null) return Convert.ToDouble(numericProp.GetValue(candidate));
+            return 0.0;
+        }
+
+        private static bool IsNumericType(Type t)
+        {
+            return t == typeof(double) || t == typeof(float) || t == typeof(decimal)
+                || t == typeof(int) || t == typeof(long) || t == typeof(short);
         }
     }
 }

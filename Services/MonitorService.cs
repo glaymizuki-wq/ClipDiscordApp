@@ -153,13 +153,24 @@ namespace ClipDiscordApp.Services
                     catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[OCR] Save bin failed: {ex.Message}"); }
 
                     // 1) TemplateMatcher 先行
+                    // 置き換え用（非同期・タイムアウト付き）
                     try
                     {
-                        var templateRes = TemplateMatcher.Check(prepped);
-                        System.Diagnostics.Debug.WriteLine($"[Template] result found={templateRes.found} label={templateRes.label} score={templateRes.score}");
-                        if (templateRes.found && templateRes.score >= TEMPLATE_SCORE_THRESHOLD)
+                        // TemplateMatcher の閾値を反映（任意）
+                        TemplateMatcher.AcceptThreshold = TEMPLATE_SCORE_THRESHOLD;
+
+                        // この単一マッチのための短期タイムアウトを作る
+                        using var matchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        matchCts.CancelAfter(TimeSpan.FromSeconds(2)); // 必要に応じて調整
+
+                        System.Diagnostics.Debug.WriteLine($"[Template] Start check (timeout=2s)");
+                        var templateRes = await TemplateMatcher.CheckAsync(prepped, matchCts.Token);
+
+                        System.Diagnostics.Debug.WriteLine($"[Template] result Found={templateRes.Found} Label={templateRes.Label} BestScore={templateRes.BestScore:F3} Tried={templateRes.TriedCandidates} ElapsedMs={templateRes.ElapsedMs}");
+
+                        if (templateRes.Found && templateRes.BestScore >= TEMPLATE_SCORE_THRESHOLD)
                         {
-                            var toParse = templateRes.label;
+                            var toParse = templateRes.Label;
                             var matches = OcrParser.ParseByRules(toParse, rules);
                             if (matches != null && matches.Any())
                             {
@@ -167,23 +178,31 @@ namespace ClipDiscordApp.Services
                                 {
                                     var key = !string.IsNullOrEmpty(m.RuleId) ? m.RuleId : m.RuleName;
                                     if (string.IsNullOrEmpty(key)) key = Guid.NewGuid().ToString();
+
                                     if (_lastNotified.TryGetValue(key, out DateTime last) && (DateTime.UtcNow - last) < _notifyCooldown)
                                     {
                                         System.Diagnostics.Debug.WriteLine($"[OCR] Skip notify for {key} (cooldown)");
                                         continue;
                                     }
+
                                     _lastNotified[key] = DateTime.UtcNow;
                                     _ = _handleMatchAsync(m);
                                     System.Diagnostics.Debug.WriteLine($"[OCR] Match(from template): rule={m.RuleName} matches=[{string.Join(',', m.Matches)}]");
                                 }
                             }
+
                             await Task.Delay(200, cancellationToken);
                             continue;
                         }
                     }
+                    catch (OperationCanceledException)
+                    {
+                        // タイムアウトまたは外部キャンセル。ログだけ出して次フレームへ（必要ならリトライを入れる）
+                        System.Diagnostics.Debug.WriteLine("[Template] check canceled (timeout or external cancellation)");
+                    }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[Template] check failed: {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine($"[Template] check failed: {ex}");
                     }
 
                     // 2) フォールバック OCR: binary と gray を試す
