@@ -38,7 +38,7 @@
                 <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,6,0,0">
                     <TextBlock Text="テスト通知メッセージ" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <!-- 一行表示向けに高さを小さくする（通常の半分程度） -->
-                    <TextBox x:Name="txtNotificationContent" Height="18" MinWidth="260" Width="420" Text="BUY"
+                    <TextBox x:Name="txtNotificationContent" Height="18" MinWidth="260" Width="420" Text="[MILKAY] 上昇中"
                              VerticalContentAlignment="Center" ToolTip="ここに送信するメッセージを入力してください"/>
                 </StackPanel>
             </Grid>

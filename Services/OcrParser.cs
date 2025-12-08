@@ -11,15 +11,44 @@ namespace ClipDiscordApp.Parsers
         {
             var results = new List<ExtractMatch>();
 
-            // --- last-token first check (日時 + SELL/BUY 形式向け) ---
+            // --- last-token first check (日時 + ラベル 形式向け) ---
             if (!string.IsNullOrWhiteSpace(rawText))
             {
                 var rawTokens = rawText.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                 var lastRaw = rawTokens.LastOrDefault();
                 if (!string.IsNullOrWhiteSpace(lastRaw))
                 {
+                    // 比較用正規化（NormalizeForComparison が日本語を崩す場合は lastRaw 直接比較に切り替える）
                     var cand = ClipDiscordApp.Utils.OcrTextUtils.NormalizeForComparison(lastRaw);
 
+                    // --- Japanese labels ---
+                    if (cand == "上昇中")
+                    {
+                        var upRule = (rules ?? Enumerable.Empty<ExtractRule>())
+                            .FirstOrDefault(r => r.Enabled && r.Type == ExtractRuleType.Keyword && r.Pattern == "上昇中");
+                        var em = upRule != null
+                            ? new ExtractMatch { RuleId = upRule.Id, RuleName = upRule.Name }
+                            : new ExtractMatch { RuleId = "up", RuleName = "上昇中 (auto)" };
+                        em.Matches.Add(ClipDiscordApp.Utils.OcrTextUtils.NormalizeForOutput(lastRaw));
+                        results.Add(em);
+                        System.Diagnostics.Debug.WriteLine($"[ParseByRules] LastToken matched '上昇中' lastRaw='{lastRaw}'");
+                        return results;
+                    }
+
+                    if (cand == "下落中")
+                    {
+                        var downRule = (rules ?? Enumerable.Empty<ExtractRule>())
+                            .FirstOrDefault(r => r.Enabled && r.Type == ExtractRuleType.Keyword && r.Pattern == "下落中");
+                        var em = downRule != null
+                            ? new ExtractMatch { RuleId = downRule.Id, RuleName = downRule.Name }
+                            : new ExtractMatch { RuleId = "down", RuleName = "下落中 (auto)" };
+                        em.Matches.Add(ClipDiscordApp.Utils.OcrTextUtils.NormalizeForOutput(lastRaw));
+                        results.Add(em);
+                        System.Diagnostics.Debug.WriteLine($"[ParseByRules] LastToken matched '下落中' lastRaw='{lastRaw}'");
+                        return results;
+                    }
+
+                    // --- English BUY/SELL legacy checks (後方互換のため残置) ---
                     // quick regex checks
                     if (System.Text.RegularExpressions.Regex.IsMatch(cand, @"\bS[EI1\|]?[L1I]{1,2}\b"))
                     {
@@ -68,7 +97,7 @@ namespace ClipDiscordApp.Parsers
                         return results;
                     }
 
-                    // --- 保険: 末尾 L が欠けている可能性を検査（例: "SML" -> "SELL"） ---
+                    // 保険: 末尾 L が欠けている可能性（例: "SML" -> "SELL"）
                     if (distSell > Math.Max(1, fuzzy))
                     {
                         var cand2 = cand.Replace(" ", ""); // "S M L" などを詰める

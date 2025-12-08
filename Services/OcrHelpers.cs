@@ -48,33 +48,30 @@ namespace ClipDiscordApp.Services
             {
                 if (string.IsNullOrWhiteSpace(raw)) continue;
 
-                var s = raw.Trim().ToUpperInvariant();
-                s = s.Replace('—', '-').Replace('ー', '-').Replace('　', ' ');
-                s = new string(s.Where(c => char.IsLetterOrDigit(c) || c == ':' || c == '-' || char.IsWhiteSpace(c)).ToArray());
+                // 日本語OCR用に基本的な正規化
+                var s = raw.Trim();
+                // 全角スペースを半角に
+                s = s.Replace('　', ' ');
+                // よくあるOCR誤認補正（例: 洛→落、昇→上昇）
+                s = s.Replace("洛", "落").Replace("昇", "上昇");
 
-                var tokens = s.Split(new[] { ':', '-', ' ', 'T' }, StringSplitOptions.RemoveEmptyEntries);
+                // トークン分割（スペースや記号で分割）
+                var tokens = s.Split(new[] { ' ', ':', '-', 'T' }, StringSplitOptions.RemoveEmptyEntries);
 
-                var tokenCandidates = new HashSet<string>();
-                foreach (var t in tokens)
-                {
-                    tokenCandidates.Add(t);
-                    tokenCandidates.Add(t.Replace('O', '0').Replace('I', '1').Replace('L', '1'));
-                    tokenCandidates.Add(t.Replace('0', 'O').Replace('1', 'I'));
-                    tokenCandidates.Add(t.Replace('S', '5').Replace('B', '8'));
-                    tokenCandidates.Add(t.Replace('5', 'S').Replace('8', 'B'));
-                    if (t.All(c => c == 'O' || c == '0')) tokenCandidates.Add(new string(t.Select(c => c == 'O' ? '0' : 'O').ToArray()));
-                }
-
-                foreach (var cand in tokenCandidates)
+                foreach (var cand in tokens)
                 {
                     if (string.IsNullOrWhiteSpace(cand)) continue;
-                    var scoreSell = ComputeLabelScore(cand, "SELL");
-                    var scoreBuy = ComputeLabelScore(cand, "BUY");
-                    var sellC = new LabelCandidate(cand, "SELL", scoreSell, source);
-                    var buyC = new LabelCandidate(cand, "BUY", scoreBuy, source);
-                    results.Add(sellC);
-                    results.Add(buyC);
-                    System.Diagnostics.Debug.WriteLine($"[OcrHelpers] Candidate src={source} token='{cand}' SELL={scoreSell:F3} BUY={scoreBuy:F3}");
+
+                    // 「下落中」「上昇中」とのスコアを計算
+                    var scoreDown = ComputeLabelScore(cand, "下落中");
+                    var scoreUp = ComputeLabelScore(cand, "上昇中");
+
+                    results.Add(new LabelCandidate(cand, "下落中", scoreDown, source));
+                    results.Add(new LabelCandidate(cand, "上昇中", scoreUp, source));
+
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[OcrHelpers] Candidate src={source} token='{cand}' 下落中={scoreDown:F3} 上昇中={scoreUp:F3}"
+                    );
                 }
             }
 
