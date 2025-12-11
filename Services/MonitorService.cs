@@ -1,4 +1,5 @@
-﻿using ClipDiscordApp.Models;
+﻿
+using ClipDiscordApp.Models;
 using ClipDiscordApp.Parsers;
 using OpenCvSharp;
 using OpenCvSharp.Extensions;
@@ -15,7 +16,6 @@ using YourNamespace.Ocr;
 
 namespace ClipDiscordApp.Services
 {
-    // デリゲート型群: UI 側の実装を渡すため
     public delegate Bitmap CaptureFrameBitmapDelegate();
     public delegate Bitmap CropToRegionDelegate(Bitmap src, Rectangle region);
     public delegate string ComputeSimpleHashDelegate(Bitmap bmp);
@@ -31,18 +31,14 @@ namespace ClipDiscordApp.Services
         private readonly Dictionary<string, DateTime> _lastNotified = new();
         private string _lastPreviewHash = string.Empty;
 
-        // 外部（MainWindow）から渡す処理
         private readonly CaptureFrameBitmapDelegate _captureFrame;
         private readonly CropToRegionDelegate _cropToRegion;
         private readonly ComputeSimpleHashDelegate _computeHash;
         private readonly BitmapToBitmapSourceDelegate _bmpToSource;
         private readonly HandleMatchAsyncDelegate _handleMatchAsync;
         private readonly LoadRulesDelegate _loadRules;
-
-        // UI 更新用アクション（Dispatcher 内で実行される）
         private readonly Action<BitmapSource> _setPreviewAction;
 
-        // コンストラクタ: 必要な外部機能を注入する（MainWindow から渡す）
         public MonitorService(
             string logDir,
             TesseractEngine tessEngine,
@@ -64,7 +60,6 @@ namespace ClipDiscordApp.Services
             _loadRules = loadRules ?? throw new ArgumentNullException(nameof(loadRules));
             _setPreviewAction = setPreviewAction ?? throw new ArgumentNullException(nameof(setPreviewAction));
 
-            // Tesseract whitelist 設定（推奨）: 初期化時に一度設定
             try
             {
                 _tesseractEngine.SetVariable("tessedit_char_whitelist", "0123456789-:ABCDEFGHIJKLMNOPQRSTUVWXYZ ");
@@ -76,7 +71,6 @@ namespace ClipDiscordApp.Services
             }
         }
 
-        // StartMonitoringAsync 本体（先に提示したロジックをそのまま使用）
         public async Task StartMonitoringAsync(Rectangle initialRegion, CancellationToken cancellationToken)
         {
             var rules = _loadRules();
@@ -116,62 +110,47 @@ namespace ClipDiscordApp.Services
                     using var roi = _cropToRegion(frame, initialRegion);
                     using var prepped = OcrPreprocessor.Preprocess(roi, prepParams);
 
-                    // prepped 保存
-                    string preppedPath = null;
+#if DEBUG
+                    // DEBUGビルド時のみ画像保存
                     try
                     {
-                        preppedPath = Path.Combine(_logDir, $"pre_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.png");
+                        string preppedPath = Path.Combine(_logDir, $"pre_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.png");
                         prepped.Save(preppedPath);
                         System.Diagnostics.Debug.WriteLine($"[OCR] Preprocessed image saved: {preppedPath}");
-                    }
-                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[OCR] Save prepped failed: {ex.Message}"); }
 
-                    // gray / bin も保存
-                    string grayPath = null, binPath = null;
-                    try
-                    {
                         using var grayBmp = OcrPreprocessorExtensions.GetGrayBitmap(prepped);
                         if (grayBmp != null)
                         {
-                            grayPath = Path.Combine(_logDir, $"gray_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.png");
+                            string grayPath = Path.Combine(_logDir, $"gray_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.png");
                             grayBmp.Save(grayPath);
                             System.Diagnostics.Debug.WriteLine($"[OCR] Gray image saved: {grayPath}");
                         }
-                    }
-                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[OCR] Save gray failed: {ex.Message}"); }
 
-                    try
-                    {
                         using var binBmp = OcrPreprocessorExtensions.GetBinaryBitmap(prepped);
                         if (binBmp != null)
                         {
-                            binPath = Path.Combine(_logDir, $"bin_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.png");
+                            string binPath = Path.Combine(_logDir, $"bin_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.png");
                             binBmp.Save(binPath);
                             System.Diagnostics.Debug.WriteLine($"[OCR] Binary image saved: {binPath}");
                         }
                     }
-                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[OCR] Save bin failed: {ex.Message}"); }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[OCR] Save debug images failed: {ex.Message}");
+                    }
+#endif
 
-                    // 1) TemplateMatcher 先行
-                    // 置き換え用（非同期・タイムアウト付き）
+                    // TemplateMatcher
                     try
                     {
-                        // TemplateMatcher の閾値を反映（任意）
                         TemplateMatcher.AcceptThreshold = TEMPLATE_SCORE_THRESHOLD;
-
-                        // この単一マッチのための短期タイムアウトを作る
                         using var matchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                        matchCts.CancelAfter(TimeSpan.FromSeconds(2)); // 必要に応じて調整
+                        matchCts.CancelAfter(TimeSpan.FromSeconds(2));
 
-                        System.Diagnostics.Debug.WriteLine($"[Template] Start check (timeout=2s)");
                         var templateRes = await TemplateMatcher.CheckAsync(prepped, matchCts.Token);
-
-                        System.Diagnostics.Debug.WriteLine($"[Template] result Found={templateRes.Found} Label={templateRes.Label} BestScore={templateRes.BestScore:F3} Tried={templateRes.TriedCandidates} ElapsedMs={templateRes.ElapsedMs}");
-
                         if (templateRes.Found && templateRes.BestScore >= TEMPLATE_SCORE_THRESHOLD)
                         {
-                            var toParse = templateRes.Label;
-                            var matches = OcrParser.ParseByRules(toParse, rules);
+                            var matches = OcrParser.ParseByRules(templateRes.Label, rules);
                             if (matches != null && matches.Any())
                             {
                                 foreach (var m in matches)
@@ -180,32 +159,20 @@ namespace ClipDiscordApp.Services
                                     if (string.IsNullOrEmpty(key)) key = Guid.NewGuid().ToString();
 
                                     if (_lastNotified.TryGetValue(key, out DateTime last) && (DateTime.UtcNow - last) < _notifyCooldown)
-                                    {
-                                        System.Diagnostics.Debug.WriteLine($"[OCR] Skip notify for {key} (cooldown)");
                                         continue;
-                                    }
 
                                     _lastNotified[key] = DateTime.UtcNow;
                                     _ = _handleMatchAsync(m);
-                                    System.Diagnostics.Debug.WriteLine($"[OCR] Match(from template): rule={m.RuleName} matches=[{string.Join(',', m.Matches)}]");
                                 }
                             }
-
                             await Task.Delay(200, cancellationToken);
                             continue;
                         }
                     }
-                    catch (OperationCanceledException)
-                    {
-                        // タイムアウトまたは外部キャンセル。ログだけ出して次フレームへ（必要ならリトライを入れる）
-                        System.Diagnostics.Debug.WriteLine("[Template] check canceled (timeout or external cancellation)");
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[Template] check failed: {ex}");
-                    }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Template] check failed: {ex}"); }
 
-                    // 2) フォールバック OCR: binary と gray を試す
+                    // OCR fallback
                     string textBin = string.Empty;
                     string textGray = string.Empty;
 
@@ -214,10 +181,7 @@ namespace ClipDiscordApp.Services
                         using var pixBin = PixConverter.ToPix(prepped);
                         textBin = OcrHelpers.DoOcrWithRetries(_tesseractEngine, pixBin) ?? string.Empty;
                     }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[OCR] binary OCR failed: {ex.Message}");
-                    }
+                    catch { }
 
                     try
                     {
@@ -225,50 +189,26 @@ namespace ClipDiscordApp.Services
                         using var pixGray = PixConverter.ToPix(grayBmp);
                         textGray = OcrHelpers.DoOcrWithRetries(_tesseractEngine, pixGray) ?? string.Empty;
                     }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[OCR] gray OCR failed: {ex.Message}");
-                    }
+                    catch { }
 
-                    System.Diagnostics.Debug.WriteLine($"[OCR] Raw bin len={textBin.Length} bin:'{(textBin.Length > 200 ? textBin.Substring(0, 200) + "..." : textBin)}'");
-                    System.Diagnostics.Debug.WriteLine($"[OCR] Raw gray len={textGray.Length} gray:'{(textGray.Length > 200 ? textGray.Substring(0, 200) + "..." : textGray)}'");
-
-                    // 3) Normalize & Label scoring
-                    var rawCandidates = new List<(string text, string source)>();
-                    rawCandidates.Add((textBin, "binary"));
-                    rawCandidates.Add((textGray, "gray"));
-
+                    var rawCandidates = new List<(string text, string source)> { (textBin, "binary"), (textGray, "gray") };
                     var labelCandidates = new List<LabelCandidate>();
                     foreach (var (txt, src) in rawCandidates)
                     {
-                        if (string.IsNullOrWhiteSpace(txt)) continue;
-                        try
+                        if (!string.IsNullOrWhiteSpace(txt))
                         {
                             var list = OcrHelpers.NormalizeAndDetectLabels(new[] { txt }, src);
                             if (list != null) labelCandidates.AddRange(list);
                         }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"[OcrHelpers] NormalizeAndDetectLabels failed for {src}: {ex.Message}");
-                        }
                     }
-
-                    System.Diagnostics.Debug.WriteLine("[OCR] LabelCandidates (top 10):");
-                    foreach (var c in labelCandidates.OrderByDescending(x => x.Confidence).Take(10))
-                        System.Diagnostics.Debug.WriteLine($"  -> {c}");
 
                     var bestSell = labelCandidates.Where(c => c.Label == "SELL").OrderByDescending(c => c.Confidence).FirstOrDefault();
                     var bestBuy = labelCandidates.Where(c => c.Label == "BUY").OrderByDescending(c => c.Confidence).FirstOrDefault();
                     var chosen = (bestSell?.Confidence ?? 0) >= (bestBuy?.Confidence ?? 0) ? bestSell : bestBuy;
 
-                    System.Diagnostics.Debug.WriteLine($"[OCR] bestSell={bestSell?.Text}:{bestSell?.Confidence:F3} (src={bestSell?.Source})");
-                    System.Diagnostics.Debug.WriteLine($"[OCR] bestBuy ={bestBuy?.Text}:{bestBuy?.Confidence:F3} (src={bestBuy?.Source})");
-                    System.Diagnostics.Debug.WriteLine($"[OCR] chosen   ={chosen?.Label}:{chosen?.Text}:{chosen?.Confidence:F3}");
-
                     if (chosen != null && chosen.Confidence >= NOTIFY_THRESHOLD)
                     {
-                        var toParse = chosen.Text;
-                        var matches = OcrParser.ParseByRules(toParse, rules);
+                        var matches = OcrParser.ParseByRules(chosen.Text, rules);
                         if (matches != null && matches.Any())
                         {
                             foreach (var m in matches)
@@ -276,26 +216,14 @@ namespace ClipDiscordApp.Services
                                 var key = !string.IsNullOrEmpty(m.RuleId) ? m.RuleId : m.RuleName;
                                 if (string.IsNullOrEmpty(key)) key = Guid.NewGuid().ToString();
                                 if (_lastNotified.TryGetValue(key, out DateTime last) && (DateTime.UtcNow - last) < _notifyCooldown)
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"[OCR] Skip notify for {key} (cooldown)");
                                     continue;
-                                }
                                 _lastNotified[key] = DateTime.UtcNow;
                                 _ = _handleMatchAsync(m);
-                                System.Diagnostics.Debug.WriteLine($"[OCR] Match: rule={m.RuleName} matches=[{string.Join(',', m.Matches)}]");
                             }
                         }
                     }
-                    else if (chosen != null && chosen.Confidence >= LOG_ONLY_THRESHOLD)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[OCR] Low-confidence candidate (log only): {chosen.Label} '{chosen.Text}' conf={chosen.Confidence:F3}");
-                    }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine("[OCR] No confident candidate found");
-                    }
 
-                    // プレビュー更新（UI スレッドで渡す）
+                    // プレビュー更新
                     try
                     {
                         Bitmap bmpClone = null;
@@ -312,39 +240,21 @@ namespace ClipDiscordApp.Services
                                     bmpSource = _bmpToSource(bmpClone);
                                     if (bmpSource != null && bmpSource.CanFreeze) bmpSource.Freeze();
                                 }
-                                catch (Exception ex)
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"[Preview] BitmapToBitmapSource failed: {ex.Message}");
-                                    bmpSource = null;
-                                }
+                                catch { bmpSource = null; }
                                 if (bmpSource != null)
                                 {
-                                    // UI スレッドで preview を設定する
-                                    try { _setPreviewAction(bmpSource); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Preview] set action failed: {ex.Message}"); }
+                                    try { _setPreviewAction(bmpSource); } catch { }
                                 }
                             }
                         }
-                        finally
-                        {
-                            try { bmpClone?.Dispose(); } catch { }
-                        }
+                        finally { bmpClone?.Dispose(); }
                     }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[Preview] Error computing/updating preview: {ex}");
-                    }
+                    catch { }
 
                     await Task.Delay(200, cancellationToken);
                 }
-                catch (TaskCanceledException tex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[StartMonitoring] TaskCanceledException: {tex.Message}\n{tex.StackTrace}");
-                    break;
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
+                catch (TaskCanceledException) { break; }
+                catch (OperationCanceledException) { break; }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"[StartMonitoring] Error: {ex}");

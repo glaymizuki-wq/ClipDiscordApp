@@ -108,7 +108,6 @@ namespace ClipDiscordApp
                 {
                     if (!_cleanupScheduled)
                     {
-                        CleanupOldDebugFiles(_logDir, _debugKeepDays);
                         StartDailyCleanupTask();
                         _cleanupScheduled = true;
                     }
@@ -122,9 +121,9 @@ namespace ClipDiscordApp
 
         // ---------- Start / Stop Monitoring ----------
         // StartMonitoringAsync - 監視ループ（roi をハッシュ元にし、デバッグログを追加）
+
         public async Task StartMonitoringAsync(System.Drawing.Rectangle initialRegion, CancellationToken cancellationToken)
         {
-            var rules = LoadRules();
             var prepParams = OcrPreprocessorPresets.ReadableText;
             Directory.CreateDirectory(_logDir);
 
@@ -134,27 +133,6 @@ namespace ClipDiscordApp
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-#if !DEBUG
-            var tokyoNow = GetTokyoNow();
-            int hour = tokyoNow.Hour;
-            if (hour < 9 || hour >= 24)
-            {
-                Dispatcher.BeginInvoke(new Action(() => StatusText.Text = $"Paused (time filter) {tokyoNow:HH:mm}"));
-                await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken);
-                continue;
-            }
-            else
-            {
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    if (StatusText.Text.StartsWith("Paused (time filter)"))
-                        StatusText.Text = "Monitoring...";
-                }));
-            }
-#else
-                    Debug.WriteLine("[TimeFilter] skipped in DEBUG build");
-#endif
-
                     using var frame = CaptureFrameBitmap();
                     if (frame == null)
                     {
@@ -165,62 +143,31 @@ namespace ClipDiscordApp
                     using var roi = CropToRegion(frame, initialRegion);
                     using var prepped = OcrPreprocessor.Preprocess(roi, prepParams);
 
-                    // ハッシュは roi（生画像）を元に計算する
+                    // ハッシュ計算
                     string currentHash;
                     try
                     {
                         using var tmpForHash = (Bitmap)roi.Clone();
                         currentHash = ComputeSimpleHash(tmpForHash);
-                        Debug.WriteLine($"[MonitorImageInfo] roiSize={tmpForHash.Width}x{tmpForHash.Height} checksum={ComputeQuickChecksum(tmpForHash)} hash={currentHash}");
-                        Debug.WriteLine($"[PreprocessInfo] preppedSize={prepped.Width}x{prepped.Height}");
                     }
-                    catch (Exception ex)
+                    catch
                     {
-                        Debug.WriteLine($"[Monitor] hash compute failed: {ex}");
                         await Task.Delay(200, cancellationToken);
                         continue;
                     }
-
-                    Debug.WriteLine($"[DebugHashes] preview={_previewLastHash} monitor={_monitorLastHash} computed={currentHash} waiting={_waitingForNextFrameAfterNotify}");
 
                     if (_skipFirstFrameAfterStart)
                     {
                         _monitorLastHash = currentHash;
                         _skipFirstFrameAfterStart = false;
-                        Debug.WriteLine("[Monitor] Warm-up: saved first frame hash, skipping detection");
                         await Task.Delay(200, cancellationToken);
                         continue;
                     }
 
-                    if (_waitingForNextFrameAfterNotify)
-                    {
-                        if (_monitorLastHash != currentHash)
-                        {
-                            Debug.WriteLine("[Monitor] Image changed after notify -> proceed");
-                            _waitingForNextFrameAfterNotify = false;
-                            _monitorLastHash = currentHash;
-                        }
-                        else
-                        {
-                            Debug.WriteLine("[Monitor] Waiting for next update after notify (no change)");
-                            await Task.Delay(200, cancellationToken);
-                            continue;
-                        }
-                    }
-                    else
-                    {
-                        if (_monitorLastHash != null && _monitorLastHash == currentHash)
-                        {
-                            Debug.WriteLine("[Monitor] No visual change detected -> skip detection");
-                            await Task.Delay(200, cancellationToken);
-                            continue;
-                        }
+                    bool isSameImage = ComputeHammingDistance(currentHash, _monitorLastHash) <= 3;
+                    _monitorLastHash = currentHash;
 
-                        _monitorLastHash = currentHash;
-                        Debug.WriteLine("[Monitor] Visual change detected -> run detection");
-                    }
-
-                    // UI プレビュー更新（prepped を表示）
+                    // UIプレビュー更新
                     try
                     {
                         using var tmpForUi = (Bitmap)prepped.Clone();
@@ -228,96 +175,133 @@ namespace ClipDiscordApp
                         if (bs != null && bs.CanFreeze) bs.Freeze();
                         UpdatePreview(bs);
                     }
-                    catch (Exception ex) { Debug.WriteLine($"[MonitorPreview] preview update failed: {ex}"); }
+                    catch { }
 
-                    // テンプレートマッチ優先
-                    try
-                    {
-                        TemplateMatcher.AcceptThreshold = TEMPLATE_SCORE_THRESHOLD;
-                        using var matchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                        matchCts.CancelAfter(TimeSpan.FromSeconds(4));
-
-                        var frameTag = DateTime.Now.ToString("HHmmss_fff");
-                        Debug.WriteLine($"[Template] Start match frame={frameTag}");
-
-                        MatchResult templateResult = null;
-                        try { templateResult = await TemplateMatcher.CheckAsync(prepped, matchCts.Token); }
-                        catch (OperationCanceledException)
-                        {
-                            Debug.WriteLine($"[Template] matching canceled for frame={frameTag}");
-                            await Task.Delay(100, CancellationToken.None);
-                            continue;
-                        }
-
-                        if (templateResult != null && templateResult.Found)
-                        {
-                            Debug.WriteLine($"[Template] found {templateResult.Label} score={templateResult.BestScore:F3}");
-                            var toParse = templateResult.Label;
-                            var matches = OcrParser.ParseByRules(toParse, rules);
-                            if (matches != null && matches.Any())
-                            {
-                                foreach (var m in matches)
-                                {
-                                    var key = !string.IsNullOrEmpty(m.RuleId) ? m.RuleId : m.RuleName;
-                                    if (string.IsNullOrEmpty(key)) key = Guid.NewGuid().ToString();
-
-                                    if (_lastNotified.TryGetValue(key, out var last) && (DateTime.UtcNow - last) < _notifyCooldown)
-                                    {
-                                        Debug.WriteLine($"[OCR] Skip notify for {key} (cooldown)");
-                                        continue;
-                                    }
-
-                                    _lastNotified[key] = DateTime.UtcNow;
-                                    Debug.WriteLine($"[OCR] Match(from template): rule={m.RuleName} matches=[{string.Join(',', m.Matches)}]");
-                                    _ = Task.Run(async () => await HandleMatchAsync(m));
-                                    _waitingForNextFrameAfterNotify = true;
-                                    Debug.WriteLine("[Monitor] Notified -> will wait for next visual change before next detection");
-                                }
-                            }
-
-                            await Task.Delay(200, cancellationToken);
-                            continue;
-                        }
-                    }
-                    catch (Exception ex) { Debug.WriteLine($"[Template] match error: {ex}"); }
-
-                    // OCR フォールバック
+                    // ===== OCR処理 =====
+                    string rawText = string.Empty;
+                    string latestLine = string.Empty;
                     try
                     {
                         using var tmpForTess = (Bitmap)prepped.Clone();
                         using var pix = PixConverter.ToPix(tmpForTess);
                         using var page = _tesseractEngine.Process(pix);
-                        var rawText = page.GetText()?.Trim() ?? string.Empty;
+                        rawText = page.GetText()?.Trim() ?? string.Empty;
 
-                        var matches = OcrParser.ParseByRules(rawText, rules);
-                        if (matches != null && matches.Any())
+                        var lines = rawText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                        latestLine = lines.LastOrDefault()?.Trim() ?? string.Empty;
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[OCR] error: {ex}");
+                    }
+
+                    bool isSameText = NormalizeText(latestLine) == NormalizeText(_lastSentMessage);
+                    bool isDark = IsScreenDark(prepped);
+
+                    // ===== テンプレートマッチング =====
+                    MatchResult templateResult = null;
+                    bool templateMatched = false;
+                    try
+                    {
+                        TemplateMatcher.AcceptThreshold = TEMPLATE_SCORE_THRESHOLD;
+                        using var matchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        matchCts.CancelAfter(TimeSpan.FromSeconds(4));
+                        templateResult = await TemplateMatcher.CheckAsync(prepped, matchCts.Token);
+
+                        if (templateResult != null && templateResult.Found &&
+                            NormalizeText(templateResult.Label) == NormalizeText(latestLine))
                         {
-                            foreach (var m in matches)
-                            {
-                                var key = !string.IsNullOrEmpty(m.RuleId) ? m.RuleId : m.RuleName;
-                                if (string.IsNullOrEmpty(key)) key = Guid.NewGuid().ToString();
-
-                                if (_lastNotified.TryGetValue(key, out var last) && (DateTime.UtcNow - last) < _notifyCooldown)
-                                {
-                                    Debug.WriteLine($"[OCR] Skip notify for {key} (cooldown)");
-                                    continue;
-                                }
-
-                                _lastNotified[key] = DateTime.UtcNow;
-                                Debug.WriteLine($"[OCR] Match(from OCR): rule={m.RuleName} matches=[{string.Join(',', m.Matches)}]");
-                                _ = Task.Run(async () => await HandleMatchAsync(m));
-                                _waitingForNextFrameAfterNotify = true;
-                                Debug.WriteLine("[Monitor] Notified -> will wait for next visual change before next detection");
-                            }
+                            templateMatched = true;
                         }
                     }
-                    catch (Exception ex) { Debug.WriteLine($"[OCR] error: {ex}"); }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[Template] error: {ex}");
+                    }
+
+                    bool notificationSent = false;
+
+                    // ===== 通知判定 =====
+                    if (!string.IsNullOrEmpty(latestLine) && !isSameText && !isDark && templateMatched)
+                    {
+                        Debug.WriteLine($"[Notify] OCR changed and template matched: {latestLine}");
+                        _lastSentMessage = latestLine;
+                        _lastSentAt = DateTime.UtcNow;
+
+                        _ = Task.Run(async () => await HandleMatchAsync(new MatchResultItem("ocr", latestLine, new[] { latestLine })));
+                        notificationSent = true;
+                    }
+                    else
+                    {
+                        Debug.WriteLine("[Monitor] Skipped (same text, dark screen, or template mismatch)");
+                    }
+
+                    // ===== ログ出力（毎回必ず） =====
+                    try
+                    {
+                        var logFile = Path.Combine(_logDir, $"monitor_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.txt");
+                        var sb = new StringBuilder();
+                        sb.AppendLine($"Timestamp: {DateTime.UtcNow:O}");
+                        sb.AppendLine($"CurrentHash: {currentHash}");
+                        sb.AppendLine($"PreviousHash: {_monitorLastHash}");
+                        sb.AppendLine($"HammingDistance: {ComputeHammingDistance(currentHash, _monitorLastHash)}");
+                        sb.AppendLine($"IsSameImage: {isSameImage}");
+                        sb.AppendLine($"IsSameText: {isSameText}");
+                        sb.AppendLine($"IsDarkScreen: {isDark}");
+                        sb.AppendLine($"OCR LatestLine: {latestLine}");
+                        sb.AppendLine($"TemplateMatched: {templateMatched}");
+                        sb.AppendLine($"TemplateLabel: {templateResult?.Label ?? "None"}");
+                        sb.AppendLine($"NotificationSent: {notificationSent}");
+                        sb.AppendLine($"OCR FullText:");
+                        sb.AppendLine(rawText);
+                        File.WriteAllText(logFile, sb.ToString(), Encoding.UTF8);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[Log] Failed: {ex}");
+                    }
 
                     await Task.Delay(200, cancellationToken);
                 }
             }
             catch (OperationCanceledException) { Debug.WriteLine("[Monitor] canceled"); }
             catch (Exception ex) { Debug.WriteLine($"[Monitor] unexpected: {ex}"); }
+        }
+
+        // ===== ヘルパー関数 =====
+        int ComputeHammingDistance(string s1, string s2)
+        {
+            if (string.IsNullOrEmpty(s1) || string.IsNullOrEmpty(s2)) return int.MaxValue;
+            int len = Math.Min(s1.Length, s2.Length);
+            int diff = 0;
+            for (int i = 0; i < len; i++)
+            {
+                if (s1[i] != s2[i]) diff++;
+            }
+            diff += Math.Abs(s1.Length - s2.Length);
+            return diff;
+        }
+
+        string NormalizeText(string text)
+        {
+            return text.Replace("\r", "").Replace("\n", "").Replace(" ", "").Trim();
+        }
+
+        bool IsScreenDark(Bitmap bmp)
+        {
+            long sum = 0;
+            int count = 0;
+            for (int y = 0; y < bmp.Height; y += bmp.Height / 10)
+            {
+                for (int x = 0; x < bmp.Width; x += bmp.Width / 10)
+                {
+                    var c = bmp.GetPixel(x, y);
+                    sum += (c.R + c.G + c.B) / 3;
+                    count++;
+                }
+            }
+            double avgBrightness = sum / (double)count;
+            return avgBrightness < 30; // 暗い画面ならtrue
         }
 
         // 領域情報を含めるオーバーロード（推奨）
@@ -568,7 +552,6 @@ namespace ClipDiscordApp
             // 起動時クリーンアップと日次タスク開始
             try
             {
-                CleanupOldDebugFiles(_logDir, _debugKeepDays);
                 StartDailyCleanupTask();
             }
             catch (Exception ex)
@@ -1327,36 +1310,6 @@ namespace ClipDiscordApp
             return DateTime.Now;
         }
 
-        // Logs: 古いファイル削除
-        private void CleanupOldDebugFiles(string dirPath, int keepDays)
-        {
-            try
-            {
-                if (!Directory.Exists(dirPath)) return;
-                var cutoff = DateTime.Now.Date.AddDays(-keepDays);
-                foreach (var file in Directory.EnumerateFiles(dirPath, "*.png"))
-                {
-                    try
-                    {
-                        var fi = new FileInfo(file);
-                        if (fi.LastWriteTime.Date < cutoff)
-                        {
-                            fi.Delete();
-                            Debug.WriteLine($"[Cleanup] Deleted {fi.Name}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[Cleanup] Failed to delete {file}: {ex.Message}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[Cleanup] CleanupOldDebugFiles failed: {ex.Message}");
-            }
-        }
-
         // 日次クリーンアップ
         private void StartDailyCleanupTask()
         {
@@ -1370,8 +1323,6 @@ namespace ClipDiscordApp
                         var nextMidnight = now.Date.AddDays(1);
                         var delay = nextMidnight - now;
                         await Task.Delay(delay);
-
-                        CleanupOldDebugFiles(_logDir, _debugKeepDays);
                     }
                 }
                 catch (Exception ex)

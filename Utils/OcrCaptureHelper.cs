@@ -73,12 +73,15 @@ namespace ClipDiscordApp.Utils
             // Save raw for debugging (best-effort)
             try
             {
-                if (!string.IsNullOrEmpty(saveFolder))
-                {
-                    Directory.CreateDirectory(saveFolder);
-                    var p = Path.Combine(saveFolder, $"raw_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.png");
-                    bmp.Save(p, ImageFormat.Png);
-                }
+
+#if DEBUG
+if (!string.IsNullOrEmpty(saveFolder))
+{
+    Directory.CreateDirectory(saveFolder);
+    var p = Path.Combine(saveFolder, $"raw_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.png");
+    bmp.Save(p, ImageFormat.Png);
+}
+#endif
             }
             catch { /* ignore save errors */ }
 
@@ -159,24 +162,6 @@ namespace ClipDiscordApp.Utils
                     // scaled should be disposed here if we created it (but not when we cloned and intended to crop clones)
                     scaled?.Dispose();
                 }
-            }
-        }
-
-        /// <summary>
-        /// デバッグ用に一意ファイル名で保存する（best-effort）。
-        /// </summary>
-        public static void SaveDebugImage(Bitmap bmp, string folder, string prefix)
-        {
-            if (bmp == null) return;
-            try
-            {
-                Directory.CreateDirectory(folder);
-                var fname = Path.Combine(folder, $"{prefix}_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.png");
-                bmp.Save(fname, ImageFormat.Png);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[OcrCaptureHelper] SaveDebugImage failed: {ex.Message}");
             }
         }
 

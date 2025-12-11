@@ -1,4 +1,5 @@
-﻿// TemplateMatcher.cs
+﻿
+// TemplateMatcher.cs
 // Requires: OpenCvSharp, OpenCvSharp.Extensions
 using System;
 using System.Collections.Generic;
@@ -21,30 +22,24 @@ public class MatchResult
 
 public static class TemplateMatcher
 {
-    // テンプレートを保持するエントリ（Mat と元ファイル名を保持）
     private class TemplateEntry
     {
         public Mat Mat { get; set; }
         public string FileName { get; set; }
     }
 
-    // label -> list of template entries (grayscale, preprocessed)
     private static readonly Dictionary<string, List<TemplateEntry>> _templates = new();
 
-    // Configurable options
-    public static double AcceptThreshold { get; set; } = 0.80; // default threshold (tuneable)
-    public static double[] ScaleCandidates { get; set; } = new[] { 0.98, 1.0, 1.02 }; // reduce candidates for speed
-    public static int MaxAllowedMsBeforeCheck { get; set; } = 500; // check cancellation every N ms
+    public static double AcceptThreshold { get; set; } = 0.80;
+    public static double[] ScaleCandidates { get; set; } = new[] { 0.98, 1.0, 1.02 };
+    public static int MaxAllowedMsBeforeCheck { get; set; } = 500;
 
-    // Optional debug output directory (used only in DEBUG)
+#if DEBUG
     private static readonly string _debugOutDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
+#endif
 
-    /// <summary>
-    /// Initialize: load templates from folder (file names should include label as second segment e.g. tpl_buy_01.png)
-    /// </summary>
     public static void Initialize(string templatesDir)
     {
-        // Dispose existing Mats if any
         foreach (var kv in _templates)
         {
             foreach (var e in kv.Value)
@@ -64,12 +59,12 @@ public static class TemplateMatcher
         foreach (var f in Directory.EnumerateFiles(templatesDir, "*.png"))
         {
             var name = Path.GetFileNameWithoutExtension(f).ToLowerInvariant();
-            var parts = name.Split('_'); // expected tpl_buy_01
+            var parts = name.Split('_');
             if (parts.Length < 2) continue;
-            var label = parts[1]; // buy, sell, etc.
+            var label = parts[1];
             try
             {
-                using var b = new System.Drawing.Bitmap(f);
+                using var b = new Bitmap(f);
                 var mat = BitmapConverter.ToMat(b);
                 Mat gray = new Mat();
                 if (mat.Channels() == 3 || mat.Channels() == 4)
@@ -77,7 +72,6 @@ public static class TemplateMatcher
                 else
                     gray = mat.Clone();
 
-                // optional normalization: resize very large templates down to reasonable size
                 if (gray.Width > 1000 || gray.Height > 300)
                 {
                     var scaled = new Mat();
@@ -93,7 +87,6 @@ public static class TemplateMatcher
                     _templates[label] = list;
                 }
 
-                // 保存は TemplateEntry として行う（Mat の所有権はここで保持）
                 list.Add(new TemplateEntry { Mat = gray, FileName = Path.GetFileName(f) });
                 loadedFiles.Add(Path.GetFileName(f));
             }
@@ -113,23 +106,16 @@ public static class TemplateMatcher
         }
     }
 
-    /// <summary>
-    /// Normalize template-derived label into canonical rule label (SELL/BUY) when possible.
-    /// </summary>
     private static string NormalizeTemplateLabelToRule(string label)
     {
         if (string.IsNullOrEmpty(label)) return null;
         var n = label.Trim().ToUpperInvariant();
         if (n.Contains("DOWN") || n.Contains("SELL")) return "SELL";
         if (n.Contains("UP") || n.Contains("BUY")) return "BUY";
-        return n; // fallback: return original normalized label
+        return n;
     }
 
-    /// <summary>
-    /// Async Check that respects cancellation and logs summary
-    /// preppedBmp must be preprocessed with the same pipeline used to create templates (grayscale/resized)
-    /// </summary>
-    public static async Task<MatchResult> CheckAsync(System.Drawing.Bitmap preppedBmp, CancellationToken cancellationToken = default)
+    public static async Task<MatchResult> CheckAsync(Bitmap preppedBmp, CancellationToken cancellationToken = default)
     {
         return await Task.Run(() =>
         {
@@ -142,15 +128,7 @@ public static class TemplateMatcher
             if (_templates.Count == 0)
             {
                 swTotal.Stop();
-                System.Diagnostics.Debug.WriteLine("[TemplateMatcher] No templates loaded, skipping matching");
-                return new MatchResult
-                {
-                    Found = false,
-                    Label = null,
-                    BestScore = 0.0,
-                    TriedCandidates = 0,
-                    ElapsedMs = swTotal.ElapsedMilliseconds
-                };
+                return new MatchResult { Found = false, Label = null, BestScore = 0.0, TriedCandidates = 0, ElapsedMs = swTotal.ElapsedMilliseconds };
             }
 
             using var roiMatColor = BitmapConverter.ToMat(preppedBmp);
@@ -162,7 +140,6 @@ public static class TemplateMatcher
 
             try
             {
-                // Quick filter to skip heavy matching when ROI clearly doesn't match template color/brightness characteristics
                 if (!QuickColorFilter(roi))
                 {
 #if DEBUG
@@ -173,23 +150,15 @@ public static class TemplateMatcher
                         var dbgPath = Path.Combine(_debugOutDir, $"tmpl_quickfilter_{DateTime.Now:yyyyMMdd_HHmmss_fff}.png");
                         dbgBmp.Save(dbgPath);
                         dbgBmp.Dispose();
-                        System.Diagnostics.Debug.WriteLine($"[TemplateMatcher][DEBUG] QuickColorFilter rejected ROI saved to: {dbgPath}");
+                        System.Diagnostics.Debug.WriteLine($"[TemplateMatcher][DEBUG] QuickColorFilter rejected ROI saved: {dbgPath}");
                     }
                     catch (Exception ex)
                     {
                         System.Diagnostics.Debug.WriteLine($"[TemplateMatcher][DEBUG] QuickColorFilter debug save failed: {ex.Message}");
                     }
 #endif
-                    System.Diagnostics.Debug.WriteLine("[TemplateMatcher] QuickColorFilter rejected ROI - skipping template match");
                     swTotal.Stop();
-                    return new MatchResult
-                    {
-                        Found = false,
-                        Label = null,
-                        BestScore = 0.0,
-                        TriedCandidates = 0,
-                        ElapsedMs = swTotal.ElapsedMilliseconds
-                    };
+                    return new MatchResult { Found = false, Label = null, BestScore = 0.0, TriedCandidates = 0, ElapsedMs = swTotal.ElapsedMilliseconds };
                 }
 
 #if DEBUG
@@ -208,7 +177,6 @@ public static class TemplateMatcher
                 }
 #endif
 
-                // iterate templates
                 foreach (var kv in _templates)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -242,21 +210,10 @@ public static class TemplateMatcher
                                 bestFile = entry.FileName;
                             }
 
-                            // early exit if good enough
                             if (maxVal >= AcceptThreshold)
                             {
 #if DEBUG
-                                System.Diagnostics.Debug.WriteLine($"[TemplateMatcher][DEBUG] Early exit label={label} score={maxVal:0.000} >= AcceptThreshold {AcceptThreshold:0.00}. triedCandidates={triedCandidates} elapsedMs={swTotal.ElapsedMilliseconds}");
-#else
-                                System.Diagnostics.Debug.WriteLine($"[TemplateMatcher] Early exit: score {maxVal:0.000} >= AcceptThreshold {AcceptThreshold:0.00}. triedCandidates={triedCandidates} elapsedMs={swTotal.ElapsedMilliseconds}");
-#endif
-                                // map label to canonical rule if possible
-                                var mapped = NormalizeTemplateLabelToRule(label);
-                                var outLabel = mapped ?? label;
-
-                                // debug: log matched file
-#if DEBUG
-                                System.Diagnostics.Debug.WriteLine($"[TemplateMatcher][DEBUG] Early matched file={entry.FileName} label={label} mapped={outLabel}");
+                                System.Diagnostics.Debug.WriteLine($"[TemplateMatcher][DEBUG] Early exit label={label} score={maxVal:0.000}");
                                 try
                                 {
                                     Directory.CreateDirectory(_debugOutDir);
@@ -272,70 +229,26 @@ public static class TemplateMatcher
                                 }
 #endif
                                 swTotal.Stop();
-                                return new MatchResult
-                                {
-                                    Found = true,
-                                    Label = outLabel,
-                                    BestScore = maxVal,
-                                    TriedCandidates = triedCandidates,
-                                    ElapsedMs = swTotal.ElapsedMilliseconds
-                                };
+                                return new MatchResult { Found = true, Label = NormalizeTemplateLabelToRule(label), BestScore = maxVal, TriedCandidates = triedCandidates, ElapsedMs = swTotal.ElapsedMilliseconds };
                             }
 
-                            // periodic cancellation check by elapsed time to avoid long-running inner loops
                             if (swTotal.ElapsedMilliseconds > MaxAllowedMsBeforeCheck)
                             {
                                 cancellationToken.ThrowIfCancellationRequested();
                             }
-                        } // scale
-                    } // tmpl
-                } // kv
+                        }
+                    }
+                }
 
                 swTotal.Stop();
 #if DEBUG
-                System.Diagnostics.Debug.WriteLine($"[TemplateMatcher][DEBUG] MatchSummary elapsedMs={swTotal.ElapsedMilliseconds} triedCandidates={triedCandidates} bestScore={bestScore:0.000} bestLabel={bestLabel} bestFile={bestFile}");
-#else
-                System.Diagnostics.Debug.WriteLine($"[TemplateMatcher] MatchSummary elapsedMs={swTotal.ElapsedMilliseconds} triedCandidates={triedCandidates} bestScore={bestScore:0.000} bestLabel={bestLabel}");
-#endif
-
-                // final normalization of bestLabel
-                var normalizedBest = NormalizeTemplateLabelToRule(bestLabel);
-
-                // Save matched template and ROI side-by-side for inspection when found
-#if DEBUG
-                if (bestScore >= AcceptThreshold && !string.IsNullOrEmpty(bestFile))
-                {
-                    try
-                    {
-                        Directory.CreateDirectory(_debugOutDir);
-                        foreach (var kv in _templates)
-                        {
-                            foreach (var entry in kv.Value)
-                            {
-                                if (entry.FileName == bestFile)
-                                {
-                                    var bmp = BitmapConverter.ToBitmap(entry.Mat);
-                                    var matchedTemplatePath = Path.Combine(_debugOutDir, $"tmpl_matched_final_{DateTime.Now:yyyyMMdd_HHmmss_fff}_{bestFile}");
-                                    bmp.Save(matchedTemplatePath);
-                                    bmp.Dispose();
-                                    System.Diagnostics.Debug.WriteLine($"[TemplateMatcher][DEBUG] Saved matched template (final): {matchedTemplatePath}");
-                                    goto MatchedSaved;
-                                }
-                            }
-                        }
-                    MatchedSaved:;
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[TemplateMatcher][DEBUG] Failed to save matched template (final): {ex.Message}");
-                    }
-                }
+                System.Diagnostics.Debug.WriteLine($"[TemplateMatcher][DEBUG] MatchSummary elapsedMs={swTotal.ElapsedMilliseconds} triedCandidates={triedCandidates} bestScore={bestScore:0.000} bestLabel={bestLabel}");
 #endif
 
                 return new MatchResult
                 {
                     Found = bestScore >= AcceptThreshold,
-                    Label = normalizedBest ?? bestLabel,
+                    Label = NormalizeTemplateLabelToRule(bestLabel) ?? bestLabel,
                     BestScore = bestScore == double.MinValue ? 0.0 : bestScore,
                     TriedCandidates = triedCandidates,
                     ElapsedMs = swTotal.ElapsedMilliseconds
@@ -343,34 +256,31 @@ public static class TemplateMatcher
             }
             finally
             {
-                if (roi != null && !roi.IsDisposed) roi.Dispose();
+                roi?.Dispose();
             }
         }, cancellationToken);
     }
 
-    // Simple heuristic filter: check average intensity of roi; tune thresholds to your UI
     private static bool QuickColorFilter(Mat roi)
     {
         try
         {
             if (roi.Empty()) return false;
-            // small downscale to speedup mean calc
             var small = new Mat();
             Cv2.Resize(roi, small, new OpenCvSharp.Size(64, Math.Max(16, Math.Min(64, roi.Height * 64 / Math.Max(1, roi.Width)))), 0, 0, InterpolationFlags.Area);
             Scalar mean = Cv2.Mean(small);
             small.Dispose();
 
-            double avg = mean.Val0; // grayscale average 0..255
+            double avg = mean.Val0;
 #if DEBUG
             System.Diagnostics.Debug.WriteLine($"[TemplateMatcher][DEBUG] QuickColorFilter avg={avg:0.00}");
 #endif
-            // adjust these thresholds to match your typical label brightness
             if (avg < 10 || avg > 245) return false;
             return true;
         }
         catch
         {
-            return true; // fail-open: do not block matching on filter exceptions
+            return true;
         }
     }
 }
