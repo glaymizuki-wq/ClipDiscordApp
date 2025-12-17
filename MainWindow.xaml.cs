@@ -63,6 +63,9 @@ namespace ClipDiscordApp
 
         private string? _monitorLastHash; // 監視用ハッシュ（StartMonitoringAsync が更新）
 
+        private System.Drawing.Rectangle _messageRegion = new System.Drawing.Rectangle(100, 100, 400, 100);
+        private System.Drawing.Rectangle _timeRegion = new System.Drawing.Rectangle(100, 220, 100, 40);
+
         // 画像保持日数（基本1日）
         private int _debugKeepDays = 1;
 
@@ -121,84 +124,97 @@ namespace ClipDiscordApp
 
         // ---------- Start / Stop Monitoring ----------
         // StartMonitoringAsync - 監視ループ（roi をハッシュ元にし、デバッグログを追加）
+        // ---------- Start / Stop Monitoring ----------
 
-        public async Task StartMonitoringAsync(System.Drawing.Rectangle initialRegion, CancellationToken cancellationToken)
+        public async Task StartMonitoringAsync(CancellationToken cancellationToken)
         {
-            var prepParams = OcrPreprocessorPresets.ReadableText;
-            Directory.CreateDirectory(_logDir);
-
             const double TEMPLATE_SCORE_THRESHOLD = 0.80;
+            const int HASH_DISTANCE_THRESHOLD = 25;
+            const double PIXEL_DIFF_THRESHOLD = 0.001;
+            const int HASH_SIZE = 16;
+
+            Bitmap? previousTimeFrame = null;
+            string previousTimeHash = null;
+            bool skipFirstFrame = true; // 初回スキップフラグ
 
             try
             {
+                int templateCount = TemplateMatcher.GetTemplateCount();
+                WriteLog("info", $"[{GetTokyoNow():O}] [Init] Monitoring started (Templates loaded: {templateCount})");
+
                 while (!cancellationToken.IsCancellationRequested)
                 {
+                    var tokyoNow = GetTokyoNow();
+
                     using var frame = CaptureFrameBitmap();
                     if (frame == null)
                     {
-                        await Task.Delay(200, cancellationToken);
+                        WriteLog("debug", $"[{tokyoNow:O}] [Frame] Capture failed");
+                        await Task.Delay(1000, cancellationToken);
                         continue;
                     }
 
-                    using var roi = CropToRegion(frame, initialRegion);
-                    using var prepped = OcrPreprocessor.Preprocess(roi, prepParams);
+                    // ===== ROI切り出し（時間領域） =====
+                    using var timeRoi = CropToRegion(frame, _timeRegion);
+                    string currentTimeHash = ComputeEnhancedHash(timeRoi, HASH_SIZE);
 
-                    // ハッシュ計算
-                    string currentHash;
-                    try
+                    bool isTimeChanged = false;
+                    double pixelDiffRate = 0;
+                    int hashDistance = 0;
+
+                    if (previousTimeHash == null)
                     {
-                        using var tmpForHash = (Bitmap)roi.Clone();
-                        currentHash = ComputeSimpleHash(tmpForHash);
+                        previousTimeHash = currentTimeHash;
+                        previousTimeFrame = (Bitmap)timeRoi.Clone();
+                        WriteLog("debug", $"[{tokyoNow:O}] [Init] First frame, skip detection");
+                        await Task.Delay(1000, cancellationToken);
+                        continue;
                     }
-                    catch
+                    else
                     {
-                        await Task.Delay(200, cancellationToken);
+                        hashDistance = ComputeHammingDistance(currentTimeHash, previousTimeHash);
+                        pixelDiffRate = previousTimeFrame != null
+                            ? ComputeRegionDiff(previousTimeFrame, timeRoi, new Rectangle(0, 0, timeRoi.Width, timeRoi.Height))
+                            : 0;
+
+                        isTimeChanged = hashDistance > HASH_DISTANCE_THRESHOLD || pixelDiffRate > PIXEL_DIFF_THRESHOLD;
+
+                        WriteLog("debug", $"[{tokyoNow:O}] [ImageCheck] HashDistance={hashDistance}, PixelDiff={pixelDiffRate:F4}, isTimeChanged={isTimeChanged}");
+                    }
+
+                    previousTimeHash = currentTimeHash;
+                    previousTimeFrame?.Dispose();
+                    previousTimeFrame = (Bitmap)timeRoi.Clone();
+
+                    // ===== 初回スキップ処理 =====
+                    if (skipFirstFrame)
+                    {
+                        skipFirstFrame = false;
+                        WriteLog("info", $"[{tokyoNow:O}] [Skip] First frame skipped (initial state)");
+                        await Task.Delay(1000, cancellationToken);
                         continue;
                     }
 
-                    if (_skipFirstFrameAfterStart)
+                    if (!isTimeChanged)
                     {
-                        _monitorLastHash = currentHash;
-                        _skipFirstFrameAfterStart = false;
-                        await Task.Delay(200, cancellationToken);
+                        WriteLog("info", $"[{tokyoNow:O}] [Skip] No significant image change detected");
+                        await Task.Delay(1000, cancellationToken);
                         continue;
                     }
 
-                    bool isSameImage = ComputeHammingDistance(currentHash, _monitorLastHash) <= 3;
-                    _monitorLastHash = currentHash;
-
-                    // UIプレビュー更新
-                    try
+                    // ===== 時間帯チェック（日本時間 9:00～24:00） =====
+                    bool isAllowedTime = tokyoNow.Hour >= 9 && tokyoNow.Hour < 24;
+                    if (!isAllowedTime)
                     {
-                        using var tmpForUi = (Bitmap)prepped.Clone();
-                        var bs = BitmapToBitmapSource(tmpForUi);
-                        if (bs != null && bs.CanFreeze) bs.Freeze();
-                        UpdatePreview(bs);
-                    }
-                    catch { }
-
-                    // ===== OCR処理 =====
-                    string rawText = string.Empty;
-                    string latestLine = string.Empty;
-                    try
-                    {
-                        using var tmpForTess = (Bitmap)prepped.Clone();
-                        using var pix = PixConverter.ToPix(tmpForTess);
-                        using var page = _tesseractEngine.Process(pix);
-                        rawText = page.GetText()?.Trim() ?? string.Empty;
-
-                        var lines = rawText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                        latestLine = lines.LastOrDefault()?.Trim() ?? string.Empty;
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[OCR] error: {ex}");
+                        WriteLog("info", $"[{tokyoNow:O}] [Skip] Outside active hours");
+                        await Task.Delay(1000, cancellationToken);
+                        continue;
                     }
 
-                    bool isSameText = NormalizeText(latestLine) == NormalizeText(_lastSentMessage);
-                    bool isDark = IsScreenDark(prepped);
+                    // ===== メッセージ領域でテンプレートマッチング（OCR前処理済み画像を使用） =====
+                    using var msgRoi = CropToRegion(frame, _messageRegion);
+                    using var preppedMsg = OcrPreprocessor.Preprocess(msgRoi, OcrPreprocessorPresets.ReadableText);
 
-                    // ===== テンプレートマッチング =====
                     MatchResult templateResult = null;
                     bool templateMatched = false;
                     try
@@ -206,66 +222,201 @@ namespace ClipDiscordApp
                         TemplateMatcher.AcceptThreshold = TEMPLATE_SCORE_THRESHOLD;
                         using var matchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                         matchCts.CancelAfter(TimeSpan.FromSeconds(4));
-                        templateResult = await TemplateMatcher.CheckAsync(prepped, matchCts.Token);
+                        templateResult = await TemplateMatcher.CheckAsync(preppedMsg, matchCts.Token); // ←ここが重要
 
-                        if (templateResult != null && templateResult.Found &&
-                            NormalizeText(templateResult.Label) == NormalizeText(latestLine))
+                        templateMatched = templateResult?.Found ?? false;
+
+                        if (templateResult != null)
                         {
-                            templateMatched = true;
+                            WriteLog("debug", $"[{tokyoNow:O}] [TemplateResult] matched={templateMatched}, label={templateResult.Label}, score={templateResult.BestScore:F3}");
+                        }
+                        else
+                        {
+                            WriteLog("warn", $"[{tokyoNow:O}] [Template] templateResult is NULL");
                         }
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"[Template] error: {ex}");
+                        WriteLog("error", $"[{tokyoNow:O}] [Template] {ex}");
                     }
-
-                    bool notificationSent = false;
 
                     // ===== 通知判定 =====
-                    if (!string.IsNullOrEmpty(latestLine) && !isSameText && !isDark && templateMatched)
-                    {
-                        Debug.WriteLine($"[Notify] OCR changed and template matched: {latestLine}");
-                        _lastSentMessage = latestLine;
-                        _lastSentAt = DateTime.UtcNow;
+                    bool notificationSent = false;
+                    bool isDark = IsScreenDark(msgRoi);
 
-                        _ = Task.Run(async () => await HandleMatchAsync(new MatchResultItem("ocr", latestLine, new[] { latestLine })));
-                        notificationSent = true;
+                    if (!isDark && templateMatched && templateResult?.BestScore >= TEMPLATE_SCORE_THRESHOLD)
+                    {
+                        string ruleId = templateResult.Label.ToLower() == "buy" ? "buy" :
+                                        templateResult.Label.ToLower() == "sell" ? "sell" : null;
+
+                        if (ruleId != null)
+                        {
+                            string ruleName = ruleId == "buy" ? "BUY" : "SELL";
+                            if (_lastSentMessage != ruleName || (tokyoNow - _lastSentAt) > _duplicateWindow)
+                            {
+                                _lastSentMessage = ruleName;
+                                _lastSentAt = tokyoNow;
+                                _ = Task.Run(async () => await HandleMatchAsync(new MatchResultItem(ruleId, ruleName, new[] { ruleName })));
+                                notificationSent = true;
+                            }
+                        }
                     }
+
+                    if (notificationSent)
+                        WriteLog("info", $"[{tokyoNow:O}] [Notify] Notification sent: {templateResult?.Label}");
                     else
-                    {
-                        Debug.WriteLine("[Monitor] Skipped (same text, dark screen, or template mismatch)");
-                    }
+                        WriteLog("debug", $"[{tokyoNow:O}] [Notify] skipped - conditions not met");
 
-                    // ===== ログ出力（毎回必ず） =====
-                    try
-                    {
-                        var logFile = Path.Combine(_logDir, $"monitor_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}.txt");
-                        var sb = new StringBuilder();
-                        sb.AppendLine($"Timestamp: {DateTime.UtcNow:O}");
-                        sb.AppendLine($"CurrentHash: {currentHash}");
-                        sb.AppendLine($"PreviousHash: {_monitorLastHash}");
-                        sb.AppendLine($"HammingDistance: {ComputeHammingDistance(currentHash, _monitorLastHash)}");
-                        sb.AppendLine($"IsSameImage: {isSameImage}");
-                        sb.AppendLine($"IsSameText: {isSameText}");
-                        sb.AppendLine($"IsDarkScreen: {isDark}");
-                        sb.AppendLine($"OCR LatestLine: {latestLine}");
-                        sb.AppendLine($"TemplateMatched: {templateMatched}");
-                        sb.AppendLine($"TemplateLabel: {templateResult?.Label ?? "None"}");
-                        sb.AppendLine($"NotificationSent: {notificationSent}");
-                        sb.AppendLine($"OCR FullText:");
-                        sb.AppendLine(rawText);
-                        File.WriteAllText(logFile, sb.ToString(), Encoding.UTF8);
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[Log] Failed: {ex}");
-                    }
-
-                    await Task.Delay(200, cancellationToken);
+                    await Task.Delay(1000, cancellationToken);
                 }
             }
-            catch (OperationCanceledException) { Debug.WriteLine("[Monitor] canceled"); }
-            catch (Exception ex) { Debug.WriteLine($"[Monitor] unexpected: {ex}"); }
+            catch (OperationCanceledException)
+            {
+                WriteLog("info", $"[{GetTokyoNow():O}] [Monitor] canceled");
+            }
+            catch (Exception ex)
+            {
+                WriteLog("error", $"[{GetTokyoNow():O}] [Monitor] unexpected: {ex}");
+            }
+        }
+
+        private void LogImageChangeDetail(
+            DateTime timestamp,
+            System.Drawing.Rectangle region,
+            bool isHashChanged,
+            bool isPixelChanged,
+            int hashDistance,
+            double pixelDiffRate,
+            string previousHash,
+            string currentHash,
+            string changeTrigger,
+            string latestLine = "",
+            bool? templateMatched = null,
+            string templateLabel = null,
+            double? templateScore = null)
+        {
+            var logMsg = new StringBuilder();
+            logMsg.AppendLine("=== Image Change Detected ===");
+            logMsg.AppendLine($"Timestamp: {timestamp:O}");
+            logMsg.AppendLine($"Region: {region.X},{region.Y},{region.Width}x{region.Height}");
+            logMsg.AppendLine($"HashChanged: {isHashChanged}");
+            logMsg.AppendLine($"PixelChanged: {isPixelChanged}");
+            logMsg.AppendLine($"HashDistance: {hashDistance}");
+            logMsg.AppendLine($"PixelDiffRate: {pixelDiffRate:F4}");
+            logMsg.AppendLine($"PreviousHash: {previousHash}");
+            logMsg.AppendLine($"CurrentHash: {currentHash}");
+            logMsg.AppendLine($"ChangeTrigger: {changeTrigger}");
+            if (!string.IsNullOrEmpty(latestLine))
+                logMsg.AppendLine($"OCR LatestLine: {latestLine}");
+            if (templateMatched.HasValue)
+                logMsg.AppendLine($"TemplateMatched: {templateMatched.Value}");
+            if (!string.IsNullOrEmpty(templateLabel))
+                logMsg.AppendLine($"TemplateLabel: {templateLabel}");
+            if (templateScore.HasValue)
+                logMsg.AppendLine($"TemplateScore: {templateScore.Value}");
+            logMsg.AppendLine("=============================");
+
+            string date = timestamp.ToString("yyyyMMdd");
+            string logFile = Path.Combine(_logDir, $"monitor_imagechange_{date}.txt");
+            File.AppendAllText(logFile, logMsg.ToString(), Encoding.UTF8);
+        }
+
+        // ログ出力共通化（日付ローテーション対応）
+        private void WriteLog(string category, string content)
+        {
+            string date = DateTime.UtcNow.ToString("yyyyMMdd");
+            string logFile = Path.Combine(_logDir, $"monitor_{category}_{date}.txt");
+            File.AppendAllText(logFile, content + Environment.NewLine, Encoding.UTF8);
+        }
+
+        private string ComputeEnhancedHash(Bitmap bmp, int size)
+        {
+            using var resized = new Bitmap(bmp, new System.Drawing.Size(size, size));
+            var sb = new StringBuilder(size * size);
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    var c = resized.GetPixel(x, y);
+                    int avg = (c.R + c.G + c.B) / 3;
+                    sb.Append(avg > 128 ? '1' : '0');
+                }
+            }
+            return sb.ToString();
+        }
+
+        private double ComputeTextRegionDiff(Bitmap prev, Bitmap current)
+        {
+            return ComputeRegionDiff(prev, current, new Rectangle(0, 0, current.Width, current.Height));
+        }
+
+        private double ComputeRegionDiff(Bitmap a, Bitmap b, Rectangle region)
+        {
+            double diff = 0;
+            for (int y = region.Top; y < region.Bottom; y++)
+            {
+                for (int x = region.Left; x < region.Right; x++)
+                {
+                    var ca = a.GetPixel(x, y);
+                    var cb = b.GetPixel(x, y);
+
+                    diff += Math.Abs(ca.R - cb.R) + Math.Abs(ca.G - cb.G) + Math.Abs(ca.B - cb.B);
+                }
+            }
+            double maxDiff = 255 * 3 * region.Width * region.Height;
+            return diff / maxDiff; // 0～1の範囲
+
+        }
+
+        /// <summary>
+        /// 画像の平均輝度を計算します（0～255）
+        /// </summary>
+        private double GetAverageBrightness(Bitmap bmp)
+        {
+            if (bmp == null) return 0;
+
+            long sum = 0;
+            int count = 0;
+
+            // 画像全体を10分割してサンプリング
+            int stepY = Math.Max(1, bmp.Height / 10);
+            int stepX = Math.Max(1, bmp.Width / 10);
+
+            for (int y = 0; y < bmp.Height; y += stepY)
+            {
+                for (int x = 0; x < bmp.Width; x += stepX)
+                {
+                    var c = bmp.GetPixel(x, y);
+                    sum += (c.R + c.G + c.B) / 3; // RGB平均
+                    count++;
+                }
+            }
+
+            return count > 0 ? (sum / (double)count) : 0;
+        }
+
+        // ===== ピクセル差分判定メソッド =====
+        private bool IsImageChanged(Bitmap img1, Bitmap img2, double threshold = 0.02)
+        {
+            if (img1 == null || img2 == null) return false;
+            if (img1.Width != img2.Width || img1.Height != img2.Height) return true;
+
+            int diffCount = 0;
+            int totalPixels = img1.Width * img1.Height;
+
+            for (int y = 0; y < img1.Height; y += 2) // 間引きで高速化
+            {
+                for (int x = 0; x < img1.Width; x += 2)
+                {
+                    var c1 = img1.GetPixel(x, y);
+                    var c2 = img2.GetPixel(x, y);
+                    if (Math.Abs(c1.R - c2.R) > 10 || Math.Abs(c1.G - c2.G) > 10 || Math.Abs(c1.B - c2.B) > 10)
+                        diffCount++;
+                }
+            }
+
+            double diffRatio = (double)diffCount / (totalPixels / 4); // 間引き補正
+            return diffRatio > threshold;
         }
 
         // ===== ヘルパー関数 =====
@@ -284,8 +435,9 @@ namespace ClipDiscordApp
 
         string NormalizeText(string text)
         {
-            return text.Replace("\r", "").Replace("\n", "").Replace(" ", "").Trim();
+            return string.IsNullOrEmpty(text) ? string.Empty : text.Replace("\r", "").Replace("\n", "").Replace(" ", "").Trim();
         }
+
 
         bool IsScreenDark(Bitmap bmp)
         {
@@ -332,14 +484,19 @@ namespace ClipDiscordApp
             }
         }
 
-        // 既存互換用（既存呼び出しを壊さない）
-        // ComputeSimpleHash - 差分ハッシュ dHash 実装（感度向上のため）
+        /// <summary>
+        /// ComputeSimpleHash - 改良版 dHash 実装（精度向上）
+        /// 既存の呼び出しを壊さないため、メソッド名・戻り値は同じ。
+        /// </summary>
         private string ComputeSimpleHash(System.Drawing.Bitmap bmp)
         {
             if (bmp == null) return string.Empty;
 
-            const int w = 9;
-            const int h = 8;
+            // 改善ポイント：
+            // 1. 縮小サイズを大きくしてビット数を増やす（9x8 → 17x16）
+            // 2. ハッシュの感度を上げるため、比較ピクセル数を増加
+            const int w = 17; // 比較用に1列多め
+            const int h = 16;
 
             using var resized = new System.Drawing.Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
             using (var g = System.Drawing.Graphics.FromImage(resized))
@@ -361,6 +518,7 @@ namespace ClipDiscordApp
                 }
             }
 
+            // 4ビットごとに16進数化（既存互換）
             var bitStr = bits.ToString();
             var sb = new System.Text.StringBuilder(bitStr.Length / 4 + 1);
             for (int i = 0; i < bitStr.Length; i += 4)
@@ -623,6 +781,8 @@ namespace ClipDiscordApp
             }
         }
 
+
+
         private void BtnSelectRegion_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -631,22 +791,27 @@ namespace ClipDiscordApp
                 var dlg = selector.ShowDialog();
                 if (dlg == true)
                 {
-                    var sel = ConvertDrawingRectToRectangle(selector.SelectedRegion);
-                    _selectedRegion = sel;
-                    StatusText.Text = $"Region selected: {_selectedRegion.X},{_selectedRegion.Y} {_selectedRegion.Width}x{_selectedRegion.Height}";
-                    DrawSelectionOnOverlay(_selectedRegion);
+                    // 2領域取得
+                    var msgRect = ConvertDrawingRectToRectangle(selector.MessageRegion);
+                    var timeRect = ConvertDrawingRectToRectangle(selector.TimeRegion);
 
-                    // ハッシュとフラグをリセットして、選択直後の古いハッシュ判定を防ぐ
+                    _messageRegion = msgRect;
+                    _timeRegion = timeRect;
+
+                    StatusText.Text = $"MessageRegion: {_messageRegion.X},{_messageRegion.Y} {_messageRegion.Width}x{_messageRegion.Height} / TimeRegion: {_timeRegion.X},{_timeRegion.Y} {_timeRegion.Width}x{_timeRegion.Height}";
+                    DrawSelectionOnOverlay(_messageRegion); // 必要なら両方描画
+
+                    // ハッシュとフラグをリセット
                     _previewLastHash = null;
                     _lastPreviewHash = null;
                     _skipFirstFrameAfterStart = true;
                     _waitingForNextFrameAfterNotify = false;
 
-                    // Immediate preview of the selected region (show one snapshot)
+                    // Immediate preview of the message region
                     try
                     {
                         using var full = CaptureFrameBitmap();
-                        using var crop = CropToRegion(full, _selectedRegion);
+                        using var crop = CropToRegion(full, _messageRegion);
                         var bs = BitmapToBitmapSource(crop);
                         Dispatcher.BeginInvoke(new Action(() =>
                         {
@@ -1053,71 +1218,17 @@ namespace ClipDiscordApp
             return string.Empty;
         }
 
+
         private void BtnStartMonitoring_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                // 1) ハッシュとフラグの初期化は任意（元の挙動に合わせるならここは空にしても良い）
-                // _previewLastHash = null;
-                // _lastPreviewHash = null;
-                // _skipFirstFrameAfterStart = true;
-                // _waitingForNextFrameAfterNotify = false;
-
-                // 2) 領域選択を先に行う（プレビューは領域確定後に開始）
-                var selector = new RegionSelectorWindow { Owner = this };
-                var dlg = selector.ShowDialog();
-                if (dlg != true)
-                {
-                    StatusText.Text = "Monitoring cancelled (no region selected)";
-                    return;
-                }
-
-                // 3) 選択領域を内部座標に変換して保存・表示
-                var d = selector.SelectedRegion;
-                var selRect = new System.Windows.Rect(d.X, d.Y, d.Width, d.Height);
-                _selectedRegion = ConvertImageRectToBitmapRect(selRect, CapturedImage);
-                DrawSelectionOnOverlay(_selectedRegion);
-
-                // 4) プレビューループ開始（領域が確定してから）
-                // 元の挙動に戻すなら StartPreviewLoop を呼ぶか呼ばないかは既存実装に合わせる。
-                StartPreviewLoop();
-
-                // 5) 即時スナップショットで UI を更新（Freeze は残すと安全）
-                try
-                {
-                    using var full = CaptureFrameBitmap();
-                    using var crop = CropToRegion(full, _selectedRegion);
-                    var bs = BitmapToBitmapSource(crop);
-                    if (bs.CanFreeze) bs.Freeze();
-
-                    Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        try
-                        {
-                            CapturedImage.Source = bs;
-                            var src = PresentationSource.FromVisual(this);
-                            double dpiScaleX = src?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
-                            double dpiScaleY = src?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
-                            OverlayCanvas.Width = Math.Round(bs.PixelWidth / dpiScaleX);
-                            OverlayCanvas.Height = Math.Round(bs.PixelHeight / dpiScaleY);
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine($"[UISet] failed: {ex}");
-                        }
-                    }), DispatcherPriority.Render);
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[StartPreview] capture/display failed outer: {ex.Message}");
-                }
-
-                // 6) UI ボタン状態とステータス更新
+                // UI ボタン状態とステータス更新
                 BtnStartMonitoring.IsEnabled = false;
                 BtnStopMonitoring.IsEnabled = true;
                 StatusText.Text = "Monitoring...";
 
-                // 7) 既存の監視をキャンセルして新規作成（例外はログに残す）
+                // 既存の監視をキャンセルして新規作成
                 try
                 {
                     _monitoringCts?.Cancel();
@@ -1135,45 +1246,12 @@ namespace ClipDiscordApp
                 }
                 _monitoringCts = new CancellationTokenSource();
 
-                // 8) MonitorService の初期化（元のコールバックと互換ハッシュを使う）
-                if (_monitorService == null)
-                {
-                    _monitorService = new MonitorService(
-                        _logDir,
-                        _tesseractEngine,
-                        () => CaptureFrameBitmap(),
-                        (bmp, rect) => CropToRegion(bmp, rect),
-                        // 元の呼び出しを壊さないために ComputeSimpleHash を渡す（互換ラッパーがあればそれでも可）
-                        (bmp) => ComputeSimpleHash(bmp),
-                        (bmp) => BitmapToBitmapSource(bmp),
-                        async (object m) => { await HandleMatchAsync((ExtractMatch)m); },
-                        () => LoadRules(),
-                        // 元の単純なプレビューコールバックに戻す（フラグチェックは削除）
-                        (bmpSource) =>
-                        {
-                            Dispatcher.BeginInvoke(new Action(() =>
-                            {
-                                try
-                                {
-                                    CapturedImage.Source = bmpSource;
-                                    var src = PresentationSource.FromVisual(this);
-                                    double dpiScaleX = src?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
-                                    double dpiScaleY = src?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
-                                    OverlayCanvas.Width = Math.Round(bmpSource.PixelWidth / dpiScaleX);
-                                    OverlayCanvas.Height = Math.Round(bmpSource.PixelHeight / dpiScaleY);
-                                    Debug.WriteLine($"[MainWindow] preview set {bmpSource.PixelWidth}x{bmpSource.PixelHeight}, overlay {OverlayCanvas.Width}x{OverlayCanvas.Height}");
-                                }
-                                catch (Exception ex) { Debug.WriteLine($"[MainWindow] preview set failed: {ex.Message}"); }
-                            }), DispatcherPriority.Render);
-                        });
-                }
-
-                // 9) 監視ループをバックグラウンドで開始
+                // 監視ループをバックグラウンドで開始
                 _ = Task.Run(async () =>
                 {
                     try
                     {
-                        await StartMonitoringAsync(_selectedRegion, _monitoringCts.Token);
+                        await StartMonitoringAsync(_monitoringCts.Token); // 引数は CancellationToken のみ
                     }
                     catch (OperationCanceledException)
                     {
@@ -1201,6 +1279,7 @@ namespace ClipDiscordApp
                 System.Windows.MessageBox.Show($"開始に失敗しました: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
 
 
         private async Task<bool> NotifyDiscordAsync(string webhookUrl, string content, CancellationToken ct, int maxRetries = 3)

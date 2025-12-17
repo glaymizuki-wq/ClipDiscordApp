@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ClipDiscordApp")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+78249d9bcab560664e7d1f56feefc263bfb2ad8d")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+85d8e21937c78d8e41c3fe87b705f0bfdffbd0d4")]
 [assembly: System.Reflection.AssemblyProductAttribute("ClipDiscordApp")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ClipDiscordApp")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

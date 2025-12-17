@@ -22,6 +22,12 @@ public class MatchResult
 
 public static class TemplateMatcher
 {
+
+    public static int GetTemplateCount()
+    {
+        return _templates.Sum(kv => kv.Value.Count);
+    }
+
     private class TemplateEntry
     {
         public Mat Mat { get; set; }
@@ -37,6 +43,7 @@ public static class TemplateMatcher
 #if DEBUG
     private static readonly string _debugOutDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
 #endif
+
 
     public static void Initialize(string templatesDir)
     {
@@ -96,13 +103,16 @@ public static class TemplateMatcher
             }
         }
 
-        System.Diagnostics.Debug.WriteLine($"[TemplateMatcher] Loaded labels: {_templates.Keys.Count}");
-#if DEBUG
-        System.Diagnostics.Debug.WriteLine($"[TemplateMatcher][DEBUG] Template labels: {string.Join(", ", _templates.Keys)}");
-#endif
+        // ✅ ロード結果ログ
+        int totalCount = _templates.Sum(kv => kv.Value.Count);
+        System.Diagnostics.Debug.WriteLine($"[TemplateMatcher] Loaded templates: {totalCount}");
+        foreach (var kv in _templates)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TemplateMatcher] Label '{kv.Key}' -> {kv.Value.Count} files");
+        }
         if (loadedFiles.Count > 0)
         {
-            System.Diagnostics.Debug.WriteLine($"[TemplateMatcher] Found files: {string.Join(", ", loadedFiles)}");
+            System.Diagnostics.Debug.WriteLine($"[TemplateMatcher] Files: {string.Join(", ", loadedFiles)}");
         }
     }
 

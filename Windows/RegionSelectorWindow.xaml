@@ -14,17 +14,31 @@
         MouseLeftButtonUp="Window_MouseLeftButtonUp"
         MouseDoubleClick="Window_MouseDoubleClick">
     <Canvas x:Name="SelectionCanvas" Background="#80000000">
-        <Rectangle x:Name="RubberBand"
+        <!-- 1つ目の選択（文言部分） -->
+        <Rectangle x:Name="RubberBandMessage"
                    Stroke="Cyan"
                    StrokeThickness="2"
                    Fill="#40FFFFFF"
                    Visibility="Collapsed" />
+        <!-- 2つ目の選択（時刻部分） -->
+        <Rectangle x:Name="RubberBandTime"
+                   Stroke="Orange"
+                   StrokeThickness="2"
+                   Fill="#40FFFF00"
+                   Visibility="Collapsed" />
+        <!-- ヒントテキスト -->
         <TextBlock x:Name="HintText"
-                   Text="ドラッグして選択。Enter/ダブルクリックで確定、Escでキャンセル"
+                   Text="① 文言部分をドラッグして選択 → Enter/ダブルクリックで確定"
                    Foreground="White"
-                   FontSize="14"
-                   Margin="12"
+                   FontSize="16"
+                   Margin="16"
                    HorizontalAlignment="Left"
                    VerticalAlignment="Top"/>
+        <!-- 操作ボタン -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16">
+            <Button x:Name="ResetButton" Content="やり直し" Width="80" Margin="0,0,8,0" Click="ResetButton_Click"/>
+            <Button x:Name="OkButton" Content="OK" Width="80" IsEnabled="False" Click="OkButton_Click"/>
+            <Button x:Name="CancelButton" Content="キャンセル" Width="80" Click="CancelButton_Click"/>
+        </StackPanel>
     </Canvas>
 </Window>

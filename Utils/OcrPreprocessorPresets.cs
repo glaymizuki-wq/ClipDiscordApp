@@ -33,7 +33,7 @@ namespace ClipDiscordApp.Utils
             IsDarkBackground = false,
             MakeOutline = false,
 
-            SavePreprocessed = true,
+            SavePreprocessed = false,
             PreprocessedSaveFolder = null,
             PreprocessedFilenamePrefix = "pre_readable"
         };
@@ -66,7 +66,7 @@ namespace ClipDiscordApp.Utils
             IsDarkBackground = false,
             MakeOutline = false,
 
-            SavePreprocessed = true,
+            SavePreprocessed = false,
             PreprocessedSaveFolder = null,
             PreprocessedFilenamePrefix = "pre_default"
         };
@@ -99,7 +99,7 @@ namespace ClipDiscordApp.Utils
             IsDarkBackground = false,
             MakeOutline = false,
 
-            SavePreprocessed = true,
+            SavePreprocessed = false,
             PreprocessedSaveFolder = null,
             PreprocessedFilenamePrefix = "pre_conservative"
         };
